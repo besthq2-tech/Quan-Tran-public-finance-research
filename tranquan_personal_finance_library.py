@@ -176,6 +176,91 @@ for sym, name in diamond.items():
         print(f"  ✗ {sym:8s} | {name}")
     time.sleep(0.2)
 
+# VN30 basket
+print()
+vn30 = {}
+try:
+    for group in ["VN30","vn30"]:
+        r = requests.get(f"https://iboard-query.ssi.com.vn/stock/group/{group}",
+                         headers=H_SSI, timeout=10)
+        if r.status_code == 200:
+            raw = r.json()
+            items = (raw.get("data") or raw.get("value") or [])
+            if isinstance(items, dict):
+                items = items.get("stocks") or items.get("items") or []
+            for item in items:
+                sym = item.get("stockSymbol") or item.get("symbol") or item.get("code") or ""
+                if sym: vn30[sym] = item.get("stockName") or item.get("name") or sym
+            if vn30: break
+except Exception as e:
+    print(f"  SSI VN30 error: {e}")
+
+if not vn30:
+    vn30 = {"ACB":"ACB","BID":"BIDV","BVH":"Bảo Việt","CTG":"VietinBank","FPT":"FPT",
+            "GAS":"PV Gas","GVR":"GVR","HDB":"HDBank","HPG":"Hòa Phát","KDH":"KDH",
+            "MBB":"MB Bank","MSN":"Masan","MWG":"Mobile World","NVL":"Novaland",
+            "PDR":"PDR","PLX":"Petrolimex","POW":"PV Power","SAB":"Sabeco",
+            "SSI":"SSI","STB":"Sacombank","TCB":"Techcombank","TPB":"TPBank",
+            "VCB":"Vietcombank","VHM":"Vinhomes","VIB":"VIB","VIC":"Vingroup",
+            "VJC":"Vietjet","VNM":"Vinamilk","VPB":"VPBank","VRE":"Vincom Retail"}
+    print(f"  ⚠️  SSI VN30 fail — dùng hardcode ({len(vn30)} cp)")
+else:
+    print(f"  ✓ VN30 từ SSI: {len(vn30)} cp — {list(vn30.keys())}")
+
+for sym, name in vn30.items():
+    if sym not in result["stocks"]:  # skip nếu đã có từ VNDiamond
+        pts = fetch_ohlcv(sym)
+        if pts:
+            result["stocks"][sym] = {"symbol":sym,"name":name,"mgmt":"VN30","type":"Cổ phiếu","data":pts}
+            print(f"  ✓ {sym:8s} | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | {name}")
+        else:
+            print(f"  ✗ {sym:8s} | {name}")
+        time.sleep(0.2)
+    else:
+        # Cập nhật mgmt tag nếu đã có
+        result["stocks"][sym]["mgmt"] = "VN30+Diamond"
+
+# VNMidcap basket
+print()
+vnmid = {}
+try:
+    for group in ["VNMidCap","VNMIDCAP","vnmidcap"]:
+        r = requests.get(f"https://iboard-query.ssi.com.vn/stock/group/{group}",
+                         headers=H_SSI, timeout=10)
+        if r.status_code == 200:
+            raw = r.json()
+            items = (raw.get("data") or raw.get("value") or [])
+            if isinstance(items, dict):
+                items = items.get("stocks") or items.get("items") or []
+            for item in items:
+                sym = item.get("stockSymbol") or item.get("symbol") or item.get("code") or ""
+                if sym: vnmid[sym] = item.get("stockName") or item.get("name") or sym
+            if vnmid: break
+except Exception as e:
+    print(f"  SSI VNMidcap error: {e}")
+
+if not vnmid:
+    vnmid = {"DGC":"Đức Giang Chemicals","DGW":"Digiworld","DPM":"PetroVietnam Fertilizer",
+             "DXS":"Dat Xanh Services","EIB":"Eximbank","EVF":"EVF","GEX":"Gelex",
+             "HAH":"Hai An","HCM":"HSC","HDC":"HDC","IJC":"IJC","KBC":"Kinh Bac",
+             "KDC":"Kido","LPB":"LienViet","NAB":"NAB","NLG":"Nam Long","NT2":"NT2",
+             "PAN":"PAN Group","PC1":"PC1","PHR":"Phu Rieng","PNJ":"PNJ","PPC":"PPC",
+             "REE":"REE","SCS":"SCS","SHB":"SHB","SZC":"SZC","VCI":"VCI",
+             "VGC":"Viglacera","VGI":"Viettel Global","VIX":"VIX","VND":"VNDirect"}
+    print(f"  ⚠️  SSI VNMidcap fail — dùng hardcode ({len(vnmid)} cp)")
+else:
+    print(f"  ✓ VNMidcap từ SSI: {len(vnmid)} cp — {list(vnmid.keys())}")
+
+for sym, name in vnmid.items():
+    if sym not in result["stocks"]:
+        pts = fetch_ohlcv(sym)
+        if pts:
+            result["stocks"][sym] = {"symbol":sym,"name":name,"mgmt":"VNMidcap","type":"Cổ phiếu","data":pts}
+            print(f"  ✓ {sym:8s} | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | {name}")
+        else:
+            print(f"  ✗ {sym:8s} | {name}")
+        time.sleep(0.2)
+
 # ════════════════════════════════════════════════════════════
 #  PART 3: GLOBAL BENCHMARKS (server-side, no CORS issues)
 # ════════════════════════════════════════════════════════════
@@ -256,34 +341,6 @@ def fetch_coingecko_btc():
         print(f"  ✗ BTC Yahoo fallback failed: {e}")
     print("  ✗ BTC — all sources failed")
 
-def fetch_fred_case_shiller():
-    """Fetch S&P Case-Shiller HPI từ FRED (monthly) với retry."""
-    urls = [
-        "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CSUSHPISA",
-        "https://api.stlouisfed.org/fred/series/observations?series_id=CSUSHPISA&api_key=&file_type=json",
-    ]
-    H = {"User-Agent":"Mozilla/5.0 (compatible; python-requests/2.28)"}
-    for attempt in range(3):
-        try:
-            time.sleep(attempt * 3)
-            r = requests.get(urls[0], headers=H, timeout=45)
-            if r.status_code == 200:
-                lines = r.text.strip().split("\n")[1:]
-                pts = []
-                for line in lines:
-                    parts = line.split(",")
-                    if len(parts) >= 2 and parts[1].strip() not in (".", ""):
-                        try: pts.append({"date": parts[0].strip(), "close": float(parts[1].strip())})
-                        except: pass
-                pts.sort(key=lambda x: x["date"])
-                if pts:
-                    result["stocks"]["CSUSHPI"] = {"symbol":"CS-HPI","name":"S&P Case-Shiller HPI (Mỹ)","mgmt":"US Real Estate","type":"Global","data":pts}
-                    print(f"  ✓ CS-HPI   | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | Case-Shiller HPI")
-                    return
-        except Exception as e:
-            print(f"  ✗ CS-HPI attempt {attempt+1}: {e}")
-    print("  ✗ CS-HPI — all attempts failed")
-
 # Fetch all global
 fetch_coingecko_btc();             time.sleep(1)
 fetch_yahoo_etf("GLD",  "Vàng (GLD ETF)",     "Commodity"); time.sleep(0.5)
@@ -291,7 +348,6 @@ fetch_yahoo_etf("SLV",  "Bạc (SLV ETF)",      "Commodity"); time.sleep(0.5)
 fetch_yahoo_etf("SPY",  "S&P 500 (SPY)",       "US Market"); time.sleep(0.5)
 fetch_yahoo_etf("QQQ",  "Nasdaq 100 (QQQ)",    "US Market"); time.sleep(0.5)
 fetch_yahoo_etf("DIA",  "Dow Jones (DIA)",      "US Market"); time.sleep(0.5)
-fetch_fred_case_shiller()
 
 # ════════════════════════════════════════════════════════════
 #  SAVE
