@@ -1,18 +1,15 @@
 """
 =================================================================
   Tranquan Personal Finance Library
-  Output: G:\My Drive\Personal\Finance\data_vn_finance.json
-  Structure:
-  {
-    "funds":  { pid:  { symbol, name, mgmt, type, data:[{navDate,nav}] } },
-    "stocks": { sym:  { symbol, name, mgmt, type, data:[{date,close,...}] } }
-  }
+  Output: data_vn_finance.json (relative — works locally & GitHub Actions)
 =================================================================
 """
-import requests, json, time
+import requests, json, time, os
 from datetime import date, datetime
 
-OUTPUT  = r"G:\My Drive\Personal\Finance\data_vn_finance.json"
+# Relative path — GitHub Actions chạy từ repo root
+# Locally: file sẽ tạo trong cùng thư mục với script
+OUTPUT  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data_vn_finance.json")
 TODAY   = str(date.today())
 FROM_TS = int(datetime(2010, 1, 1).timestamp())
 TO_TS   = int(datetime.now().timestamp())
