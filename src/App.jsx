@@ -177,27 +177,40 @@ export default function App() {
   // ── Fetch global benchmarks (BTC, Gold, S&P500, Nasdaq, DJI) ─────────────
   useEffect(()=>{
     if(!loaded) return;
+    const yahooETF = ticker => d => {
+      const r=d?.chart?.result?.[0]; if(!r)return [];
+      const ts=r.timestamp||[], cls=r.indicators?.adjclose?.[0]?.adjclose||[];
+      return ts.map((t,i)=>({date:new Date(t*1000).toISOString().slice(0,10),close:cls[i]})).filter(x=>x.close!=null);
+    };
     const GLOBAL = [
-      {id:"BTC",   symbol:"BTC",    name:"Bitcoin",          mgmt:"Crypto",    url:"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=max&interval=daily",
+      // Crypto
+      {id:"BTC",    symbol:"BTC",     name:"Bitcoin",                    mgmt:"Crypto",
+        url:"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=max&interval=daily",
         parse: d=>(d.prices||[]).map(([ts,p])=>({date:new Date(ts).toISOString().slice(0,10),close:parseFloat(p.toFixed(2))}))},
-      {id:"GOLD",  symbol:"GOLD",   name:"Vàng (GLD ETF)",   mgmt:"Commodity", url:"https://query1.finance.yahoo.com/v8/finance/chart/GLD?interval=1d&range=max",
-        parse: d=>{ const r=d?.chart?.result?.[0]; if(!r)return []; const ts=r.timestamp||[]; const cls=r.indicators?.adjclose?.[0]?.adjclose||[]; return ts.map((t,i)=>({date:new Date(t*1000).toISOString().slice(0,10),close:cls[i]})).filter(x=>x.close!=null); }},
-      {id:"SPY",   symbol:"S&P500", name:"S&P 500 (SPY)",    mgmt:"US Market", url:"https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1d&range=max",
-        parse: d=>{ const r=d?.chart?.result?.[0]; if(!r)return []; const ts=r.timestamp||[]; const cls=r.indicators?.adjclose?.[0]?.adjclose||[]; return ts.map((t,i)=>({date:new Date(t*1000).toISOString().slice(0,10),close:cls[i]})).filter(x=>x.close!=null); }},
-      {id:"QQQ",   symbol:"Nasdaq", name:"Nasdaq 100 (QQQ)", mgmt:"US Market", url:"https://query1.finance.yahoo.com/v8/finance/chart/QQQ?interval=1d&range=max",
-        parse: d=>{ const r=d?.chart?.result?.[0]; if(!r)return []; const ts=r.timestamp||[]; const cls=r.indicators?.adjclose?.[0]?.adjclose||[]; return ts.map((t,i)=>({date:new Date(t*1000).toISOString().slice(0,10),close:cls[i]})).filter(x=>x.close!=null); }},
-      {id:"DIA",   symbol:"DJI",    name:"Dow Jones (DIA)",  mgmt:"US Market", url:"https://query1.finance.yahoo.com/v8/finance/chart/DIA?interval=1d&range=max",
-        parse: d=>{ const r=d?.chart?.result?.[0]; if(!r)return []; const ts=r.timestamp||[]; const cls=r.indicators?.adjclose?.[0]?.adjclose||[]; return ts.map((t,i)=>({date:new Date(t*1000).toISOString().slice(0,10),close:cls[i]})).filter(x=>x.close!=null); }},
+      // Commodity
+      {id:"GOLD",   symbol:"Gold",    name:"Vàng (GLD ETF)",             mgmt:"Commodity",  url:"https://query1.finance.yahoo.com/v8/finance/chart/GLD?interval=1d&range=max",  parse:yahooETF("GLD")},
+      {id:"SILVER", symbol:"Silver",  name:"Bạc (SLV ETF)",              mgmt:"Commodity",  url:"https://query1.finance.yahoo.com/v8/finance/chart/SLV?interval=1d&range=max",  parse:yahooETF("SLV")},
+      // US Equity
+      {id:"SPY",    symbol:"S&P500",  name:"S&P 500 (SPY)",              mgmt:"US Market",  url:"https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1d&range=max",  parse:yahooETF("SPY")},
+      {id:"QQQ",    symbol:"Nasdaq",  name:"Nasdaq 100 (QQQ)",           mgmt:"US Market",  url:"https://query1.finance.yahoo.com/v8/finance/chart/QQQ?interval=1d&range=max",  parse:yahooETF("QQQ")},
+      {id:"DIA",    symbol:"DJI",     name:"Dow Jones (DIA)",            mgmt:"US Market",  url:"https://query1.finance.yahoo.com/v8/finance/chart/DIA?interval=1d&range=max",  parse:yahooETF("DIA")},
+      // US Real Estate — Case-Shiller từ FRED (monthly CSV)
+      {id:"CSUSHPI",symbol:"CS-HPI",  name:"S&P Case-Shiller HPI (Mỹ)", mgmt:"US RE",
+        url:"https://fred.stlouisfed.org/graph/fredgraph.csv?id=CSUSHPISA",
+        isCSV: true,
+        parse: text => text.trim().split("\n").slice(1)
+          .map(row=>{ const [date,val]=row.split(","); return {date:date.trim(),close:parseFloat(val)}; })
+          .filter(x=>x.date&&!isNaN(x.close))},
     ];
     (async()=>{
       const newItems = {};
       for(const g of GLOBAL){
         try{
-          const res = await fetch(g.url, {headers:{Accept:"application/json"}});
+          const res = await fetch(g.url, {headers:{Accept:"application/json, text/plain, */*"}});
           if(!res.ok) continue;
-          const data = await res.json();
-          const pts  = g.parse(data).sort((a,b)=>a.date.localeCompare(b.date));
-          if(pts.length < 30) continue;
+          const raw  = g.isCSV ? await res.text() : await res.json();
+          const pts  = g.parse(raw).sort((a,b)=>a.date.localeCompare(b.date));
+          if(pts.length < 10) continue;
           newItems[g.id] = {id:g.id, symbol:g.symbol, name:g.name, mgmt:g.mgmt, type:"Global", isFund:false, data:pts};
           console.log(`✓ ${g.symbol}: ${pts.length} records`);
         }catch(e){ console.warn(`✗ ${g.symbol}:`,e.message); }
