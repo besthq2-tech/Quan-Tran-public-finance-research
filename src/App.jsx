@@ -1296,14 +1296,24 @@ function PortfolioPanel({ allItems }) {
     });
   },[portfolios,allItems,rawFrom,toD,amount,step]);
 
-  // Merged chart data across all portfolios
+  // Merged chart data — normalized to % ROI from start
   const chartData = useMemo(()=>{
     const map={};
+    // Find first value of each portfolio for normalization
+    const firstVal={};
+    portfolios.forEach((port,pi)=>{
+      if(!port.show) return;
+      const pts=allPortData[pi].points;
+      if(pts.length) firstVal[pi]=pts[0].invested||1;
+    });
     portfolios.forEach((port,pi)=>{
       if(!port.show) return;
       allPortData[pi].points.forEach(p=>{
-        if(!map[p.date]) map[p.date]={date:p.date,inv:p.invested};
-        map[p.date]["p"+pi]=p.value;
+        if(!map[p.date]) map[p.date]={date:p.date,inv:0};
+        // % ROI = (value - invested) / invested * 100
+        const roi=p.invested>0?(p.value-p.invested)/p.invested*100:0;
+        map[p.date]["p"+pi]=parseFloat(roi.toFixed(2));
+        map[p.date].inv=0; // baseline
       });
     });
     return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
@@ -1445,10 +1455,10 @@ function PortfolioPanel({ allItems }) {
               <XAxis dataKey="date" tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false}
                 tickFormatter={v=>{const[y,m]=v.split("-");return m+"/"+y.slice(2);}} interval="preserveStartEnd"/>
               <YAxis tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false}
-                tickFormatter={v=>(v/1e6).toFixed(0)+"M"} width={40}/>
-              <Tooltip formatter={(v,n)=>[(v/1e6).toFixed(2)+"M VND",n]} labelFormatter={l=>toVN(l)}
+                tickFormatter={v=>v.toFixed(0)+"%"} width={44}/>
+              <Tooltip formatter={(v,n)=>[typeof v==="number"?(v>=0?"+":"")+v.toFixed(2)+"%":"—",n]} labelFormatter={l=>toVN(l)}
                 contentStyle={{background:"#0e1520",border:"1px solid #1a2235",borderRadius:6,fontFamily:"JetBrains Mono",fontSize:12}}/>
-              <Line type="monotone" dataKey="inv" name="Tổng vốn" stroke="#475569" strokeWidth={1} strokeDasharray="4 3" dot={false}/>
+              <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 3" strokeWidth={1}/>
               {portfolios.map((port,pi)=>port.show&&(
                 <Line key={pi} type="monotone" dataKey={"p"+pi} name={port.name} stroke={COLORS[pi%COLORS.length]} strokeWidth={2} dot={false} connectNulls/>
               ))}
@@ -1461,7 +1471,7 @@ function PortfolioPanel({ allItems }) {
               </div>
             ))}
             <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--muted)"}}>
-              <div style={{width:16,height:1,background:"#475569",borderRadius:1,borderTop:"2px dashed #475569"}}/> Tổng vốn
+              <div style={{width:16,height:1,background:"#475569",borderStyle:"dashed",borderTop:"2px dashed #475569"}}/> 0% (breakeven)
             </div>
           </div>
         </div>
