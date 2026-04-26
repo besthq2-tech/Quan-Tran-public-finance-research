@@ -409,7 +409,7 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:28,height:28,background:"linear-gradient(135deg,var(--accent),#818cf8)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#080c14"}}>Q</div>
           <div>
-            <span style={{fontWeight:700,fontSize:13}}>Comprehensive Investing Research</span>
+            <span style={{fontWeight:700,fontSize:13}}>Trần Đức Hồng Quân · Comprehensive Personal Investing Research Tool</span>
             <span style={{color:"var(--muted)",fontSize:11,marginLeft:8}}>
               {Object.values(allItems).filter(x=>x.isFund).length} quỹ ·{" "}
               {Object.values(allItems).filter(x=>x.type==="ETF").length} ETF ·{" "}
@@ -1244,8 +1244,9 @@ function PortfolioPanel({ allItems }) {
   // Multiple portfolios support
   const COLORS = ["#22d3ee","#f59e0b","#a78bfa","#34d399","#fb7185","#60a5fa"];
   const mkPort = (name,allocs) => ({name, allocs, show:true});
+  const autoName = (allocs) => allocs.length===0?"Danh mục":allocs.map(a=>allItems[a.id]?.symbol||a.id).join(" + ");
   const [portfolios, setPortfolios] = useState([
-    mkPort("Danh mục 1", [{id:Object.keys(allItems)[0]||"28",w:60},{id:Object.keys(allItems)[1]||"ACB",w:40}])
+    (()=>{ const k=Object.keys(allItems); const a=[{id:k[0]||"28",w:60},{id:k[1]||"ACB",w:40}]; return mkPort(k.length>=2?(allItems[k[0]]?.symbol||k[0])+" + "+(allItems[k[1]]?.symbol||k[1]):"Danh mục 1", a); })()
   ]);
   const [activeP,  setActiveP]  = useState(0);
   const [amountM,  setAmountM]  = useState(1);
@@ -1314,9 +1315,23 @@ function PortfolioPanel({ allItems }) {
   const valid = Math.abs(totalW-100)<1;
   const apData = allPortData[activeP]||{points:[],fin:{value:0,invested:0},overlapFrom:rawFrom};
 
-  const setApAllocs = fn => setPortfolios(prev=>prev.map((p,i)=>i===activeP?{...p,allocs:fn(p.allocs)}:p));
+  const setApAllocs = fn => setPortfolios(prev=>prev.map((p,i)=>{
+    if(i!==activeP) return p;
+    const newAllocs=fn(p.allocs);
+    // Auto-update name only if it still looks auto-generated (contains + or %)
+    const oldAuto=p.allocs.map(a=>allItems[a.id]?.symbol||a.id).join(" + ");
+    const isAuto=p.name===oldAuto||p.name.includes("%")||p.name==="Danh mục "+(i+1);
+    const newName=isAuto?newAllocs.map(a=>allItems[a.id]?.symbol||a.id).join(" + "):p.name;
+    return {...p,allocs:newAllocs,name:newName||p.name};
+  }));
   const addAlloc = ()=>{ const used=apAllocs.map(a=>a.id); const next=Object.keys(allItems).find(id=>!used.includes(id)); if(next)setApAllocs(p=>[...p,{id:next,w:0}]); };
-  const addPortfolio = ()=>{ const n=portfolios.length; setPortfolios(p=>[...p,mkPort("Danh mục "+(n+1),[{id:Object.keys(allItems)[0]||"28",w:100}])]); setActiveP(n); };
+  const addPortfolio = ()=>{
+    const n=portfolios.length;
+    const k=Object.keys(allItems);
+    const firstSym=allItems[k[0]]?.symbol||k[0]||"Item";
+    setPortfolios(p=>[...p,mkPort(firstSym+" 100%",[{id:k[0]||"28",w:100}])]);
+    setActiveP(n);
+  };
 
   return (
     <div>
