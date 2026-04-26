@@ -261,14 +261,21 @@ export default function App() {
 
   // ── Filter list ───────────────────────────────────────────────────────────
   const ALL_TYPES = ["Tất cả","Cổ phiếu","Cân bằng","Trái phiếu","ETF","Index","Global"];
-  const ALL_CATS  = ["Tất cả","Quỹ mở","ETF & CP"];
+  const ALL_CATS  = ["Tất cả","Quỹ mở","Cổ phiếu","ETF","Global"];
 
   const itemList = useMemo(()=>
     Object.values(allItems)
       .filter(item => {
-        if(catF==="Quỹ mở" && !item.isFund) return false;
-        if(catF==="ETF & CP" && item.isFund) return false;
-        if(typeF!=="Tất cả" && item.type!==typeF) return false;
+        if(catF==="Quỹ mở"   && !item.isFund) return false;
+        if(catF==="ETF"      && item.type!=="ETF") return false;
+        if(catF==="Global"   && item.type!=="Global") return false;
+        if(catF==="Cổ phiếu" && (item.isFund||item.type==="ETF"||item.type==="Global"||item.type==="Index")) return false;
+        // Sub-filter by rổ (mgmt field stores basket name)
+        if(typeF==="VNDiamond" && !item.mgmt?.includes("Diamond")) return false;
+        if(typeF==="VN30"      && !item.mgmt?.includes("VN30")) return false;
+        if(typeF==="VNMidcap"  && !item.mgmt?.includes("VNMidcap")) return false;
+        if(typeF==="Cân bằng"  && item.type!=="Cân bằng") return false;
+        if(typeF==="Trái phiếu"&& item.type!=="Trái phiếu") return false;
         if(search){
           const q=search.toLowerCase();
           return item.symbol.toLowerCase().includes(q)||item.name.toLowerCase().includes(q)||item.mgmt.toLowerCase().includes(q);
@@ -369,7 +376,7 @@ export default function App() {
       <style>{CSS}</style>
       <div style={{textAlign:"center",maxWidth:420,padding:"0 24px",width:"100%"}}>
         <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--accent)",letterSpacing:".2em",marginBottom:16}}>TRẦN ĐỨC HỒNG QUÂN</div>
-        <div style={{fontSize:24,fontWeight:700,marginBottom:20}}>Quỹ · ETF · Cổ phiếu</div>
+        <div style={{fontSize:20,fontWeight:700,marginBottom:20}}>Comprehensive Investing Research Tool</div>
 
         {loading
           ? <div style={{color:"var(--muted)",fontSize:12,fontFamily:"JetBrains Mono",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
@@ -430,19 +437,26 @@ export default function App() {
               />
               {/* Category */}
               <div style={{display:"flex",gap:3,marginBottom:4,flexWrap:"wrap"}}>
-                {["Tất cả","Quỹ mở","ETF & CP"].map(c=>(
+                {["Tất cả","Quỹ mở","Cổ phiếu","ETF","Global"].map(c=>(
                   <button key={c} className={`btn ${catF===c?"on":""}`} style={{fontSize:9,padding:"3px 6px"}} onClick={()=>{setCatF(c);setTypeF('Tất cả');}}>{c}</button>
                 ))}
               </div>
-              {/* Type filter — context-aware, hide "Tất cả" duplicate */}
-              <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                {(catF==="ETF & CP"
-                  ? ["ETF","Cổ phiếu","Index","Global"]
-                  : ["Cổ phiếu","Cân bằng","Trái phiếu"]
-                ).map(t=>(
-                  <button key={t} className={`btn ${typeF===t?"on":""}`} style={{fontSize:9,padding:"3px 6px"}} onClick={()=>setTypeF(typeF===t?'Tất cả':t)}>{t}</button>
-                ))}
-              </div>
+              {/* Sub-filter by rổ (only for Cổ phiếu) */}
+              {catF==="Cổ phiếu"&&(
+                <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+                  {["VNDiamond","VN30","VNMidcap"].map(t=>(
+                    <button key={t} className={`btn ${typeF===t?"on":""}`} style={{fontSize:9,padding:"3px 6px"}} onClick={()=>setTypeF(typeF===t?'Tất cả':t)}>{t}</button>
+                  ))}
+                </div>
+              )}
+              {/* Sub-filter for Quỹ mở */}
+              {catF==="Quỹ mở"&&(
+                <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+                  {["Cân bằng","Trái phiếu"].map(t=>(
+                    <button key={t} className={`btn ${typeF===t?"on":""}`} style={{fontSize:9,padding:"3px 6px"}} onClick={()=>setTypeF(typeF===t?'Tất cả':t)}>{t}</button>
+                  ))}
+                </div>
+              )}
             </div>
             {/* List */}
             <div style={{overflowY:"auto",flex:1,padding:"5px 7px",display:"flex",flexDirection:"column",gap:4}}>
@@ -1543,7 +1557,9 @@ function RankingPanel({ allItems }) {
     return Object.values(allItems)
       .filter(item => {
         if(filterT==="Quỹ mở" && !item.isFund) return false;
-        if(filterT==="ETF & CP" && item.isFund) return false;
+        if(filterT==="ETF"      && item.type!=="ETF") return false;
+        if(filterT==="Global"   && item.type!=="Global") return false;
+        if(filterT==="Cổ phiếu" && (item.isFund||item.type==="ETF"||item.type==="Global"||item.type==="Index")) return false;
         if(filterTy!=="Tất cả" && item.type!==filterTy) return false;
         return true;
       })
@@ -1616,7 +1632,7 @@ function RankingPanel({ allItems }) {
       {/* Filters */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
         <div style={{display:"flex",gap:4}}>
-          {["Tất cả","Quỹ mở","ETF & CP"].map(f=>(
+          {["Tất cả","Quỹ mở","Cổ phiếu","ETF","Global"].map(f=>(
             <button key={f} className={`btn ${filterT===f?"on":""}`} onClick={()=>setFilterT(f)}>{f}</button>
           ))}
         </div>
