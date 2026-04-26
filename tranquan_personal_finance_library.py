@@ -189,74 +189,100 @@ H_YAHOO = {
 }
 
 def fetch_yahoo_etf(ticker, name, mgmt):
-    """Fetch daily OHLC từ Yahoo Finance (server-side OK, no CORS)."""
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=max"
-    try:
-        r = requests.get(url, headers=H_YAHOO, timeout=20)
-        if r.status_code != 200:
-            print(f"  ✗ {ticker} — HTTP {r.status_code}")
-            return
-        d = r.json()
-        res = d.get("chart",{}).get("result",[])
-        if not res:
-            print(f"  ✗ {ticker} — no result")
-            return
-        ts  = res[0].get("timestamp",[])
-        cls = res[0].get("indicators",{}).get("adjclose",[{}])[0].get("adjclose",[])
-        pts = [{"date": datetime.fromtimestamp(ts[i]).strftime("%Y-%m-%d"),
-                "close": round(cls[i], 4)}
-               for i in range(min(len(ts),len(cls))) if cls[i] is not None]
-        pts.sort(key=lambda x: x["date"])
-        if pts:
-            result["stocks"][ticker] = {"symbol":ticker,"name":name,"mgmt":mgmt,"type":"Global","data":pts}
-            print(f"  ✓ {ticker:8s} | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | {name}")
-        else:
-            print(f"  ✗ {ticker} — empty data")
-    except Exception as e:
-        print(f"  ✗ {ticker} — {e}")
+    """Fetch daily OHLC từ Yahoo Finance."""
+    # Dùng range=max với interval=1d để lấy daily từ đầu
+    for host in ["query1", "query2"]:
+        url = f"https://{host}.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=max"
+        try:
+            r = requests.get(url, headers=H_YAHOO, timeout=20)
+            if r.status_code != 200: continue
+            d = r.json()
+            res = d.get("chart",{}).get("result",[])
+            if not res: continue
+            ts  = res[0].get("timestamp",[])
+            cls = res[0].get("indicators",{}).get("adjclose",[{}])[0].get("adjclose",[])
+            pts = [{"date": datetime.fromtimestamp(ts[i]).strftime("%Y-%m-%d"),
+                    "close": round(cls[i], 4)}
+                   for i in range(min(len(ts),len(cls))) if cls[i] is not None]
+            pts.sort(key=lambda x: x["date"])
+            if pts:
+                result["stocks"][ticker] = {"symbol":ticker,"name":name,"mgmt":mgmt,"type":"Global","data":pts}
+                print(f"  ✓ {ticker:8s} | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | {name}")
+                return
+        except Exception as e:
+            continue
+    print(f"  ✗ {ticker} — all hosts failed")
 
 def fetch_coingecko_btc():
-    """Fetch Bitcoin từ CoinGecko."""
-    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=max&interval=daily"
+    """Fetch Bitcoin từ CoinGecko — thử nhiều endpoint."""
+    # Endpoint 1: public API v3
+    urls = [
+        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=max&interval=daily",
+        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=3650&interval=daily",
+    ]
+    H = {"Accept":"application/json","User-Agent":"Mozilla/5.0 (compatible; curl/7.0)","x-cg-demo-api-key":""}
+    for url in urls:
+        try:
+            time.sleep(2)  # CoinGecko rate limit
+            r = requests.get(url, headers=H, timeout=30)
+            if r.status_code == 200:
+                prices = r.json().get("prices",[])
+                pts = [{"date": datetime.fromtimestamp(ts/1000).strftime("%Y-%m-%d"),
+                        "close": round(p, 2)} for ts,p in prices]
+                pts.sort(key=lambda x: x["date"])
+                if pts:
+                    result["stocks"]["BTC"] = {"symbol":"BTC","name":"Bitcoin","mgmt":"Crypto","type":"Global","data":pts}
+                    print(f"  ✓ BTC      | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | Bitcoin (USD)")
+                    return
+        except Exception as e:
+            print(f"  ✗ BTC attempt failed: {e}")
+    # Fallback: dùng Yahoo Finance BTC-USD
     try:
-        r = requests.get(url, headers={"Accept":"application/json","User-Agent":"Mozilla/5.0"}, timeout=20)
-        if r.status_code != 200:
-            print(f"  ✗ BTC — HTTP {r.status_code}")
-            return
-        prices = r.json().get("prices",[])
-        pts = [{"date": datetime.fromtimestamp(ts/1000).strftime("%Y-%m-%d"),
-                "close": round(p, 2)} for ts,p in prices]
-        pts.sort(key=lambda x: x["date"])
-        if pts:
-            result["stocks"]["BTC"] = {"symbol":"BTC","name":"Bitcoin","mgmt":"Crypto","type":"Global","data":pts}
-            print(f"  ✓ BTC      | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | Bitcoin (USD)")
-        else:
-            print("  ✗ BTC — empty")
+        r = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?interval=1d&range=max",
+            headers={"User-Agent":"Mozilla/5.0","Accept":"application/json"}, timeout=20)
+        if r.status_code == 200:
+            res = r.json().get("chart",{}).get("result",[])
+            if res:
+                ts  = res[0].get("timestamp",[])
+                cls = res[0].get("indicators",{}).get("adjclose",[{}])[0].get("adjclose",[])
+                pts = [{"date":datetime.fromtimestamp(ts[i]).strftime("%Y-%m-%d"),"close":round(cls[i],2)}
+                       for i in range(min(len(ts),len(cls))) if cls[i] is not None]
+                pts.sort(key=lambda x:x["date"])
+                if pts:
+                    result["stocks"]["BTC"] = {"symbol":"BTC","name":"Bitcoin","mgmt":"Crypto","type":"Global","data":pts}
+                    print(f"  ✓ BTC      | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | Bitcoin via Yahoo")
+                    return
     except Exception as e:
-        print(f"  ✗ BTC — {e}")
+        print(f"  ✗ BTC Yahoo fallback failed: {e}")
+    print("  ✗ BTC — all sources failed")
 
 def fetch_fred_case_shiller():
-    """Fetch S&P Case-Shiller HPI từ FRED (monthly)."""
-    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CSUSHPISA"
-    try:
-        r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=20)
-        if r.status_code != 200:
-            print(f"  ✗ CS-HPI — HTTP {r.status_code}")
-            return
-        lines = r.text.strip().split("\n")[1:]  # skip header
-        pts = []
-        for line in lines:
-            parts = line.split(",")
-            if len(parts) >= 2 and parts[1].strip() != ".":
-                pts.append({"date": parts[0].strip(), "close": float(parts[1].strip())})
-        pts.sort(key=lambda x: x["date"])
-        if pts:
-            result["stocks"]["CSUSHPI"] = {"symbol":"CS-HPI","name":"S&P Case-Shiller HPI (Mỹ)","mgmt":"US Real Estate","type":"Global","data":pts}
-            print(f"  ✓ CS-HPI   | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | Case-Shiller HPI")
-        else:
-            print("  ✗ CS-HPI — empty")
-    except Exception as e:
-        print(f"  ✗ CS-HPI — {e}")
+    """Fetch S&P Case-Shiller HPI từ FRED (monthly) với retry."""
+    urls = [
+        "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CSUSHPISA",
+        "https://api.stlouisfed.org/fred/series/observations?series_id=CSUSHPISA&api_key=&file_type=json",
+    ]
+    H = {"User-Agent":"Mozilla/5.0 (compatible; python-requests/2.28)"}
+    for attempt in range(3):
+        try:
+            time.sleep(attempt * 3)
+            r = requests.get(urls[0], headers=H, timeout=45)
+            if r.status_code == 200:
+                lines = r.text.strip().split("\n")[1:]
+                pts = []
+                for line in lines:
+                    parts = line.split(",")
+                    if len(parts) >= 2 and parts[1].strip() not in (".", ""):
+                        try: pts.append({"date": parts[0].strip(), "close": float(parts[1].strip())})
+                        except: pass
+                pts.sort(key=lambda x: x["date"])
+                if pts:
+                    result["stocks"]["CSUSHPI"] = {"symbol":"CS-HPI","name":"S&P Case-Shiller HPI (Mỹ)","mgmt":"US Real Estate","type":"Global","data":pts}
+                    print(f"  ✓ CS-HPI   | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | Case-Shiller HPI")
+                    return
+        except Exception as e:
+            print(f"  ✗ CS-HPI attempt {attempt+1}: {e}")
+    print("  ✗ CS-HPI — all attempts failed")
 
 # Fetch all global
 fetch_coingecko_btc();             time.sleep(1)
