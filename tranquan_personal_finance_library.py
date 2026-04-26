@@ -177,6 +177,97 @@ for sym, name in diamond.items():
     time.sleep(0.2)
 
 # ════════════════════════════════════════════════════════════
+#  PART 3: GLOBAL BENCHMARKS (server-side, no CORS issues)
+# ════════════════════════════════════════════════════════════
+print(f"\n{'=' * 65}")
+print("  PART 3: Global Benchmarks")
+print("=" * 65)
+
+H_YAHOO = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "application/json",
+}
+
+def fetch_yahoo_etf(ticker, name, mgmt):
+    """Fetch daily OHLC từ Yahoo Finance (server-side OK, no CORS)."""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=max"
+    try:
+        r = requests.get(url, headers=H_YAHOO, timeout=20)
+        if r.status_code != 200:
+            print(f"  ✗ {ticker} — HTTP {r.status_code}")
+            return
+        d = r.json()
+        res = d.get("chart",{}).get("result",[])
+        if not res:
+            print(f"  ✗ {ticker} — no result")
+            return
+        ts  = res[0].get("timestamp",[])
+        cls = res[0].get("indicators",{}).get("adjclose",[{}])[0].get("adjclose",[])
+        pts = [{"date": datetime.fromtimestamp(ts[i]).strftime("%Y-%m-%d"),
+                "close": round(cls[i], 4)}
+               for i in range(min(len(ts),len(cls))) if cls[i] is not None]
+        pts.sort(key=lambda x: x["date"])
+        if pts:
+            result["stocks"][ticker] = {"symbol":ticker,"name":name,"mgmt":mgmt,"type":"Global","data":pts}
+            print(f"  ✓ {ticker:8s} | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | {name}")
+        else:
+            print(f"  ✗ {ticker} — empty data")
+    except Exception as e:
+        print(f"  ✗ {ticker} — {e}")
+
+def fetch_coingecko_btc():
+    """Fetch Bitcoin từ CoinGecko."""
+    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=max&interval=daily"
+    try:
+        r = requests.get(url, headers={"Accept":"application/json","User-Agent":"Mozilla/5.0"}, timeout=20)
+        if r.status_code != 200:
+            print(f"  ✗ BTC — HTTP {r.status_code}")
+            return
+        prices = r.json().get("prices",[])
+        pts = [{"date": datetime.fromtimestamp(ts/1000).strftime("%Y-%m-%d"),
+                "close": round(p, 2)} for ts,p in prices]
+        pts.sort(key=lambda x: x["date"])
+        if pts:
+            result["stocks"]["BTC"] = {"symbol":"BTC","name":"Bitcoin","mgmt":"Crypto","type":"Global","data":pts}
+            print(f"  ✓ BTC      | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | Bitcoin (USD)")
+        else:
+            print("  ✗ BTC — empty")
+    except Exception as e:
+        print(f"  ✗ BTC — {e}")
+
+def fetch_fred_case_shiller():
+    """Fetch S&P Case-Shiller HPI từ FRED (monthly)."""
+    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CSUSHPISA"
+    try:
+        r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=20)
+        if r.status_code != 200:
+            print(f"  ✗ CS-HPI — HTTP {r.status_code}")
+            return
+        lines = r.text.strip().split("\n")[1:]  # skip header
+        pts = []
+        for line in lines:
+            parts = line.split(",")
+            if len(parts) >= 2 and parts[1].strip() != ".":
+                pts.append({"date": parts[0].strip(), "close": float(parts[1].strip())})
+        pts.sort(key=lambda x: x["date"])
+        if pts:
+            result["stocks"]["CSUSHPI"] = {"symbol":"CS-HPI","name":"S&P Case-Shiller HPI (Mỹ)","mgmt":"US Real Estate","type":"Global","data":pts}
+            print(f"  ✓ CS-HPI   | {len(pts):5d} recs | {pts[0]['date']} → {pts[-1]['date']} | Case-Shiller HPI")
+        else:
+            print("  ✗ CS-HPI — empty")
+    except Exception as e:
+        print(f"  ✗ CS-HPI — {e}")
+
+# Fetch all global
+fetch_coingecko_btc();             time.sleep(1)
+fetch_yahoo_etf("GLD",  "Vàng (GLD ETF)",     "Commodity"); time.sleep(0.5)
+fetch_yahoo_etf("SLV",  "Bạc (SLV ETF)",      "Commodity"); time.sleep(0.5)
+fetch_yahoo_etf("SPY",  "S&P 500 (SPY)",       "US Market"); time.sleep(0.5)
+fetch_yahoo_etf("QQQ",  "Nasdaq 100 (QQQ)",    "US Market"); time.sleep(0.5)
+fetch_yahoo_etf("DIA",  "Dow Jones (DIA)",      "US Market"); time.sleep(0.5)
+fetch_fred_case_shiller()
+
+# ════════════════════════════════════════════════════════════
 #  SAVE
 # ════════════════════════════════════════════════════════════
 with open(OUTPUT,"w",encoding="utf-8") as f:
@@ -184,6 +275,6 @@ with open(OUTPUT,"w",encoding="utf-8") as f:
 
 print(f"\n{'=' * 65}")
 print(f"  ✅ {len(result['funds'])} quỹ mở")
-print(f"  ✅ {len(result['stocks'])} ETF/stocks")
+print(f"  ✅ {len(result['stocks'])} ETF/stocks/global")
 print(f"  📁 → {OUTPUT}")
 print("=" * 65)
