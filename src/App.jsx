@@ -399,7 +399,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <style>{CSS}</style>
       <div style={{textAlign:"center",maxWidth:420,padding:"0 24px",width:"100%"}}>
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--accent)",letterSpacing:".2em",marginBottom:16}}>QUAN TRAN · INVESTING RESEARCH</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--accent)",letterSpacing:".2em",marginBottom:16}}>TRẦN ĐỨC HỒNG QUÂN</div>
         <div style={{fontSize:24,fontWeight:700,marginBottom:20}}>Quỹ · ETF · Cổ phiếu</div>
 
         {loading
@@ -433,7 +433,7 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:28,height:28,background:"linear-gradient(135deg,var(--accent),#818cf8)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#080c14"}}>Q</div>
           <div>
-            <span style={{fontWeight:700,fontSize:13}}>Quan Tran · Investing Research</span>
+            <span style={{fontWeight:700,fontSize:13}}>Trần Đức Hồng Quân · Investing Research</span>
             <span style={{color:"var(--muted)",fontSize:11,marginLeft:8}}>
               {Object.values(allItems).filter(x=>x.isFund).length} quỹ ·{" "}
               {Object.values(allItems).filter(x=>x.type==="ETF").length} ETF ·{" "}
