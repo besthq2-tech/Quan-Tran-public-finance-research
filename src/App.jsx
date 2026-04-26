@@ -409,7 +409,7 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:28,height:28,background:"linear-gradient(135deg,var(--accent),#818cf8)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#080c14"}}>Q</div>
           <div>
-            <span style={{fontWeight:700,fontSize:13}}>Trần Đức Hồng Quân · Investing Research</span>
+            <span style={{fontWeight:700,fontSize:13}}>Comprehensive Investing Research</span>
             <span style={{color:"var(--muted)",fontSize:11,marginLeft:8}}>
               {Object.values(allItems).filter(x=>x.isFund).length} quỹ ·{" "}
               {Object.values(allItems).filter(x=>x.type==="ETF").length} ETF ·{" "}
@@ -1239,81 +1239,134 @@ function LSDCAStopPanel({ item, allItems }) {
 // ════════════════════════════════════════════════════════════════
 //  TAB 7: Portfolio Panel
 // ════════════════════════════════════════════════════════════════
-function PortfolioPanel({ allItems }) {
-  const [allocs,    setAllocs]    = useState([{id:"28",w:60},{id:"DCBF",w:40}]);
-  const [amountM,   setAmountM]   = useState(1);
-  const amount  = amountM * 1_000_000;
-  const [freq,      setFreq]      = useState("monthly");
-  const [preset,    setPreset]    = useState({l:"5Y",y:5});
-  const [customFrom,setCustomFrom]= useState(()=>{const t=new Date();t.setFullYear(t.getFullYear()-5);return fmtD(t);});
-  const [customTo,  setCustomTo]  = useState(fmtD(new Date()));
 
-  const totalW=allocs.reduce((s,a)=>s+a.w,0);
-  const valid =Math.abs(totalW-100)<1;
-  const step  =freq==="daily"?1:freq==="biweekly"?10:freq==="weekly"?5:21;
-  const fmtM  =v=>(v/1e6).toFixed(2)+"M";
+function PortfolioPanel({ allItems }) {
+  // Multiple portfolios support
+  const COLORS = ["#22d3ee","#f59e0b","#a78bfa","#34d399","#fb7185","#60a5fa"];
+  const mkPort = (name,allocs) => ({name, allocs, show:true});
+  const [portfolios, setPortfolios] = useState([
+    mkPort("Danh mục 1", [{id:Object.keys(allItems)[0]||"28",w:60},{id:Object.keys(allItems)[1]||"ACB",w:40}])
+  ]);
+  const [activeP,  setActiveP]  = useState(0);
+  const [amountM,  setAmountM]  = useState(1);
+  const [freq,     setFreq]     = useState("monthly");
+  const [preset,   setPreset]   = useState({l:"5Y",y:5});
+  const [customFrom,setCustomFrom]=useState(()=>{const t=new Date();t.setFullYear(t.getFullYear()-5);return fmtD(t);});
+  const [customTo, setCustomTo] = useState(fmtD(new Date()));
+
+  const amount = amountM * 1_000_000;
+  const step   = freq==="daily"?1:freq==="biweekly"?10:freq==="weekly"?5:21;
+  const fmtMv  = v => (v/1e6).toFixed(2)+"M";
 
   const {fromD:rawFrom, toD} = useMemo(()=>periodDates(preset,customFrom,customTo),[preset,customFrom,customTo]);
 
-  // Overlap: dùng ngày bắt đầu muộn nhất trong các quỹ được chọn
-  const overlapFrom = useMemo(()=>{
-    if(!allocs.length) return rawFrom;
-    return allocs.reduce((mx,{id})=>{
-      const d=allItems[id]?.data||[];
-      const first=d.find(x=>x.date>=rawFrom)?.date||rawFrom;
-      return first>mx?first:mx;
-    }, rawFrom);
-  },[allocs,allItems,rawFrom]);
-  const fromD = overlapFrom;
-
-  const portData = useMemo(()=>{
-    if(!valid||!allocs.length) return [];
-    const navLookup={};
-    const dateSets=[];
-    allocs.forEach(({id})=>{
-      const d=(allItems[id]?.data||[]).filter(x=>x.date>=fromD&&x.date<=toD);
-      const ds=new Set(d.map(x=>x.date));
-      dateSets.push(ds);
-      navLookup[id]={};
-      d.forEach(x=>navLookup[id][x.date]=x.close);
+  // Compute portData for each portfolio
+  const allPortData = useMemo(()=>{
+    return portfolios.map(port => {
+      const allocs = port.allocs;
+      const totalW = allocs.reduce((s,a)=>s+a.w,0);
+      if(Math.abs(totalW-100)>=1 || !allocs.length) return {points:[], fin:{value:0,invested:0}, overlapFrom:rawFrom};
+      // Overlap
+      const overlapFrom = allocs.reduce((mx,{id})=>{
+        const d=allItems[id]?.data||[];
+        const first=d.find(x=>x.date>=rawFrom)?.date||rawFrom;
+        return first>mx?first:mx;
+      }, rawFrom);
+      // Build lookup
+      const navLookup={}, dateSets=[];
+      allocs.forEach(({id})=>{
+        const d=(allItems[id]?.data||[]).filter(x=>x.date>=overlapFrom&&x.date<=toD);
+        dateSets.push(new Set(d.map(x=>x.date)));
+        navLookup[id]={};
+        d.forEach(x=>navLookup[id][x.date]=x.close);
+      });
+      if(!dateSets.length||!dateSets[0].size) return {points:[], fin:{value:0,invested:0}, overlapFrom};
+      const dates=[...dateSets[0]].filter(d=>dateSets.every(s=>s.has(d))).sort();
+      if(!dates.length) return {points:[], fin:{value:0,invested:0}, overlapFrom};
+      let units={}, totalInv=0;
+      allocs.forEach(({id})=>units[id]=0);
+      const points = dates.map((date,i)=>{
+        if(i%step===0){allocs.forEach(({id,w})=>{const nav=navLookup[id][date];if(nav)units[id]+=(amount*(w/100))/nav;});totalInv+=amount;}
+        let val=0; allocs.forEach(({id})=>{val+=units[id]*(navLookup[id][date]||0);});
+        return {date, value:Math.round(val), invested:totalInv};
+      });
+      const fin = points[points.length-1]||{value:0,invested:0};
+      return {points, fin, overlapFrom};
     });
-    // Intersection dates
-    const dates=[...dateSets[0]].filter(d=>dateSets.every(s=>s.has(d))).sort();
-    if(!dates.length) return [];
-    let units={},totalInv=0;
-    allocs.forEach(({id})=>units[id]=0);
-    return dates.map((date,i)=>{
-      if(i%step===0){allocs.forEach(({id,w})=>{const nav=navLookup[id][date];if(nav)units[id]+=(amount*(w/100))/nav;});totalInv+=amount;}
-      let val=0;allocs.forEach(({id})=>{val+=units[id]*(navLookup[id][date]||0);});
-      return {date,value:Math.round(val),invested:totalInv};
+  },[portfolios,allItems,rawFrom,toD,amount,step]);
+
+  // Merged chart data across all portfolios
+  const chartData = useMemo(()=>{
+    const map={};
+    portfolios.forEach((port,pi)=>{
+      if(!port.show) return;
+      allPortData[pi].points.forEach(p=>{
+        if(!map[p.date]) map[p.date]={date:p.date,inv:p.invested};
+        map[p.date]["p"+pi]=p.value;
+      });
     });
-  },[allocs,allItems,fromD,toD,amount,step,valid]);
+    return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
+  },[allPortData, portfolios]);
 
-  const portFin=portData[portData.length-1]||{value:0,invested:0};
-  const portRoi=portFin.invested>0?(portFin.value-portFin.invested)/portFin.invested*100:0;
+  const ap = portfolios[activeP]||portfolios[0];
+  const apAllocs = ap?.allocs||[];
+  const totalW = apAllocs.reduce((s,a)=>s+a.w,0);
+  const valid = Math.abs(totalW-100)<1;
+  const apData = allPortData[activeP]||{points:[],fin:{value:0,invested:0},overlapFrom:rawFrom};
 
-  const addAlloc=()=>{
-    const used=allocs.map(a=>a.id);
-    const next=Object.keys(allItems).find(id=>!used.includes(id));
-    if(next)setAllocs(p=>[...p,{id:next,w:0}]);
-  };
+  const setApAllocs = fn => setPortfolios(prev=>prev.map((p,i)=>i===activeP?{...p,allocs:fn(p.allocs)}:p));
+  const addAlloc = ()=>{ const used=apAllocs.map(a=>a.id); const next=Object.keys(allItems).find(id=>!used.includes(id)); if(next)setApAllocs(p=>[...p,{id:next,w:0}]); };
+  const addPortfolio = ()=>{ const n=portfolios.length; setPortfolios(p=>[...p,mkPort("Danh mục "+(n+1),[{id:Object.keys(allItems)[0]||"28",w:100}])]); setActiveP(n); };
 
   return (
     <div>
+      {/* Portfolio tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+        {portfolios.map((p,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:0}}>
+            <button onClick={()=>setActiveP(i)}
+              style={{padding:"5px 12px",borderRadius:"6px 0 0 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,
+                background:activeP===i?COLORS[i%COLORS.length]+"22":"transparent",
+                color:COLORS[i%COLORS.length],fontSize:11,cursor:"pointer",fontWeight:activeP===i?700:400}}>
+              ● {p.name}
+            </button>
+            <button onClick={()=>setPortfolios(prev=>prev.map((x,j)=>j===i?{...x,show:!x.show}:x))}
+              style={{padding:"5px 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,borderLeft:"none",
+                background:"transparent",color:p.show?COLORS[i%COLORS.length]:"#475569",fontSize:10,cursor:"pointer"}}>
+              {p.show?"👁":"○"}
+            </button>
+            {portfolios.length>1&&(
+              <button onClick={()=>{setPortfolios(prev=>prev.filter((_,j)=>j!==i));setActiveP(Math.max(0,activeP-1));}}
+                style={{padding:"5px 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,borderLeft:"none",
+                  borderRadius:"0 6px 6px 0",background:"transparent",color:"#fb7185",fontSize:10,cursor:"pointer"}}>✕</button>
+            )}
+          </div>
+        ))}
+        <button className="btn" onClick={addPortfolio} style={{fontSize:10}}>+ Danh mục mới</button>
+      </div>
+
+      {/* Active portfolio name edit */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <input value={ap?.name||""} onChange={e=>setPortfolios(prev=>prev.map((p,i)=>i===activeP?{...p,name:e.target.value}:p))}
+          style={{background:"var(--surface)",border:"1px solid var(--border2)",color:COLORS[activeP%COLORS.length],
+            borderRadius:6,padding:"4px 10px",fontSize:12,fontFamily:"Space Grotesk",outline:"none",width:160,fontWeight:600}}/>
+        <span style={{fontSize:10,color:"var(--muted)"}}>← tên danh mục</span>
+      </div>
+
       {/* Alloc builder */}
-      <div className="card" style={{padding:"14px",marginBottom:10}}>
-        <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>🏗️ Xây danh mục (quỹ + ETF + CP đều được)</div>
-        {allocs.map((a,i)=>(
-          <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-            <select value={a.id} onChange={e=>setAllocs(p=>p.map((x,j)=>j===i?{...x,id:e.target.value}:x))}
-              style={{flex:2,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--txt)",borderRadius:6,padding:"5px 8px",fontSize:11,outline:"none"}}>
+      <div className="card" style={{padding:"12px 14px",marginBottom:10}}>
+        <div style={{fontSize:12,fontWeight:600,marginBottom:8,color:COLORS[activeP%COLORS.length]}}>🏗️ Xây danh mục (quỹ + ETF + CP đều được)</div>
+        {apAllocs.map((a,i)=>(
+          <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+            <select value={a.id} onChange={e=>setApAllocs(p=>p.map((x,j)=>j===i?{...x,id:e.target.value}:x))}
+              style={{flex:2,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--txt)",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none"}}>
               {Object.values(allItems).map(f=><option key={f.id} value={f.id}>{f.symbol} — {f.name?.slice(0,28)}</option>)}
             </select>
-            <input type="range" min={0} max={100} value={a.w} onChange={e=>setAllocs(p=>p.map((x,j)=>j===i?{...x,w:Number(e.target.value)}:x))} style={{flex:1,accentColor:"var(--accent)"}}/>
-            <input type="number" min={0} max={100} value={a.w} onChange={e=>setAllocs(p=>p.map((x,j)=>j===i?{...x,w:Number(e.target.value)}:x))}
-              style={{width:52,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--txt)",borderRadius:6,padding:"4px 6px",fontFamily:"JetBrains Mono",fontSize:12,textAlign:"right",outline:"none"}}/>
+            <input type="range" min={0} max={100} value={a.w} onChange={e=>setApAllocs(p=>p.map((x,j)=>j===i?{...x,w:Number(e.target.value)}:x))} style={{flex:1,accentColor:COLORS[activeP%COLORS.length]}}/>
+            <input type="number" min={0} max={100} value={a.w} onChange={e=>setApAllocs(p=>p.map((x,j)=>j===i?{...x,w:Number(e.target.value)}:x))}
+              style={{width:48,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--txt)",borderRadius:6,padding:"4px 6px",fontFamily:"JetBrains Mono",fontSize:12,textAlign:"right",outline:"none"}}/>
             <span style={{color:"var(--muted)",fontSize:11}}>%</span>
-            <button className="btn" style={{color:"#fb7185",borderColor:"#fb7185"}} onClick={()=>setAllocs(p=>p.filter((_,j)=>j!==i))}>✕</button>
+            <button className="btn" style={{color:"#fb7185",borderColor:"#fb7185"}} onClick={()=>setApAllocs(p=>p.filter((_,j)=>j!==i))}>✕</button>
           </div>
         ))}
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
@@ -1324,56 +1377,72 @@ function PortfolioPanel({ allItems }) {
 
       {/* Controls */}
       <div className="card" style={{padding:"10px 14px",marginBottom:10,display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
-        <div><div style={{fontSize:9,color:"var(--muted)",marginBottom:5,textTransform:"uppercase",letterSpacing:".1em",fontFamily:"JetBrains Mono"}}>Mỗi kỳ (triệu ₫)</div><input type="number" value={amountM} onChange={e=>setAmountM(Math.max(0,Number(e.target.value)))} step={0.5} min={0} style={{width:80}}/></div>
-        <div><div style={{fontSize:9,color:"var(--muted)",marginBottom:5,textTransform:"uppercase",letterSpacing:".1em",fontFamily:"JetBrains Mono"}}>Tần suất</div><div style={{display:"flex",gap:4}}>{[["daily","Ngày"],["biweekly","2T"],["weekly","Tuần"],["monthly","Tháng"]].map(([v,l])=><button key={v} className={"btn "+(freq===v?"on":"")} style={{fontSize:10,padding:"3px 7px"}} onClick={()=>setFreq(v)}>{l}</button>)}</div></div>
+        <div><div style={{fontSize:9,color:"var(--muted)",marginBottom:5,textTransform:"uppercase",letterSpacing:".1em",fontFamily:"JetBrains Mono"}}>Mỗi kỳ (triệu ₫)</div>
+          <input type="number" value={amountM} onChange={e=>setAmountM(Math.max(0,Number(e.target.value)))} step={0.5} min={0} style={{width:80}}/></div>
+        <div><div style={{fontSize:9,color:"var(--muted)",marginBottom:5,textTransform:"uppercase",letterSpacing:".1em",fontFamily:"JetBrains Mono"}}>Tần suất</div>
+          <div style={{display:"flex",gap:4}}>{[["daily","Ngày"],["biweekly","2T"],["weekly","Tuần"],["monthly","Tháng"]].map(([v,l])=><button key={v} className={"btn "+(freq===v?"on":"")} style={{fontSize:10,padding:"3px 7px"}} onClick={()=>setFreq(v)}>{l}</button>)}</div></div>
       </div>
 
       {/* Period */}
       <div className="card" style={{padding:"10px 14px",marginBottom:10}}>
         <PeriodBar preset={preset} setPreset={setPreset} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo}/>
-        <div style={{fontSize:10,color:"var(--muted)",fontFamily:"JetBrains Mono"}}>
-          {toVN(fromD)} → {toVN(toD)}
-          {overlapFrom>rawFrom&&<span style={{color:"#f59e0b",marginLeft:10}}>⚠️ Overlap — bắt đầu từ {toVN(overlapFrom)} (theo quỹ muộn nhất)</span>}
+        <div style={{fontSize:10,color:"var(--muted)",fontFamily:"JetBrains Mono",marginTop:4}}>
+          {toVN(rawFrom)} → {toVN(toD)}
+          {apData.overlapFrom>rawFrom&&<span style={{color:"#f59e0b",marginLeft:10}}>⚠️ Overlap — bắt đầu từ {toVN(apData.overlapFrom)}</span>}
         </div>
       </div>
 
-      {/* Allocation bar */}
+      {/* Allocation bar - active portfolio */}
       <div style={{display:"flex",borderRadius:8,overflow:"hidden",height:22,marginBottom:10}}>
-        {allocs.map((a,i)=>(
-          <div key={i} style={{flex:a.w,background:PALETTE[i%PALETTE.length],display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#000",fontWeight:700,fontFamily:"JetBrains Mono",overflow:"hidden"}}>
+        {apAllocs.map((a,i)=>(
+          <div key={i} style={{flex:a.w,background:PALETTE[i%PALETTE.length],display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#000",fontWeight:700,overflow:"hidden"}}>
             {a.w>8?(allItems[a.id]?.symbol||a.id)+" "+a.w+"%":""}
           </div>
         ))}
       </div>
 
-      {/* Stats */}
-      {valid&&portData.length>0&&(
-        <>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
-            {[["Danh mục ROI",(portRoi>=0?"+":"")+portRoi.toFixed(2)+"%",portRoi>=0?"#22d3ee":"#fb7185"],
-              ["Tổng đầu tư",fmtM(portFin.invested)+"M","var(--muted)"],
-              ["Giá trị",fmtM(portFin.value)+"M","#22d3ee"]]
-              .map(([l,v,c])=><div key={l} className="sc"><div style={{fontSize:9,color:"var(--muted)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:6,fontFamily:"JetBrains Mono"}}>{l}</div><div className="mono" style={{fontSize:13,fontWeight:700,color:c}}>{v}</div></div>)}
+      {/* Stats - all portfolios */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+        {portfolios.map((port,pi)=>{
+          const fin=allPortData[pi]?.fin||{value:0,invested:0};
+          const roi=fin.invested>0?(fin.value-fin.invested)/fin.invested*100:0;
+          return (
+            <div key={pi} className="sc" style={{border:`1px solid ${COLORS[pi%COLORS.length]}44`,opacity:port.show?1:0.4}}>
+              <div style={{fontSize:9,color:COLORS[pi%COLORS.length],fontFamily:"JetBrains Mono",marginBottom:4,fontWeight:600}}>{port.name}</div>
+              <div className="mono" style={{fontSize:13,fontWeight:700,color:roi>=0?"#22d3ee":"#fb7185"}}>{roi>=0?"+":""}{roi.toFixed(2)}%</div>
+              <div style={{fontSize:9,color:"var(--muted)",marginTop:2}}>{fmtMv(fin.value)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Chart — all portfolios on same chart */}
+      {chartData.length>0?(
+        <div className="card" style={{padding:"14px 4px 10px"}}>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={chartData} margin={{top:6,right:6,bottom:0,left:0}}>
+              <CartesianGrid stroke="#1a2235" strokeDasharray="3 3" vertical={false}/>
+              <XAxis dataKey="date" tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false}
+                tickFormatter={v=>{const[y,m]=v.split("-");return m+"/"+y.slice(2);}} interval="preserveStartEnd"/>
+              <YAxis tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false}
+                tickFormatter={v=>(v/1e6).toFixed(0)+"M"} width={40}/>
+              <Tooltip formatter={(v,n)=>[(v/1e6).toFixed(2)+"M VND",n]} labelFormatter={l=>toVN(l)}
+                contentStyle={{background:"#0e1520",border:"1px solid #1a2235",borderRadius:6,fontFamily:"JetBrains Mono",fontSize:12}}/>
+              <Line type="monotone" dataKey="inv" name="Tổng vốn" stroke="#475569" strokeWidth={1} strokeDasharray="4 3" dot={false}/>
+              {portfolios.map((port,pi)=>port.show&&(
+                <Line key={pi} type="monotone" dataKey={"p"+pi} name={port.name} stroke={COLORS[pi%COLORS.length]} strokeWidth={2} dot={false} connectNulls/>
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+          <div style={{display:"flex",gap:14,justifyContent:"center",marginTop:8,flexWrap:"wrap"}}>
+            {portfolios.filter(p=>p.show).map((p,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--muted)"}}>
+                <div style={{width:16,height:2,background:COLORS[portfolios.indexOf(p)%COLORS.length],borderRadius:1}}/>{p.name}
+              </div>
+            ))}
           </div>
-          <div className="card" style={{padding:"14px 4px 10px"}}>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={portData} margin={{top:6,right:6,bottom:0,left:0}}>
-                <defs>
-                  <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22d3ee" stopOpacity={.18}/><stop offset="95%" stopColor="#22d3ee" stopOpacity={0}/></linearGradient>
-                  <linearGradient id="pgi" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#64748b" stopOpacity={.08}/><stop offset="95%" stopColor="#64748b" stopOpacity={0}/></linearGradient>
-                </defs>
-                <CartesianGrid stroke="#1a2235" strokeDasharray="3 3" vertical={false}/>
-                <XAxis dataKey="date" tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false} tickFormatter={v=>{const[y,m]=v.split("-");return m+"/"+y.slice(2);}} interval="preserveStartEnd"/>
-                <YAxis tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false} tickFormatter={v=>(v/1e6).toFixed(0)+"M"} width={38}/>
-                <Tooltip formatter={(v,n)=>[fmtM(v)+"M",n]} labelFormatter={l=>toVN(l)} contentStyle={{background:"#0e1520",border:"1px solid #1a2235",borderRadius:6,fontFamily:"JetBrains Mono",fontSize:12}}/>
-                <Area type="monotone" dataKey="invested" name="Tổng đầu tư" stroke="#475569" strokeWidth={1} fill="url(#pgi)" dot={false}/>
-                <Area type="monotone" dataKey="value" name="Giá trị DM" stroke="#22d3ee" strokeWidth={1.5} fill="url(#pg)" dot={false}/>
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </>
-      )}
-      {!valid&&<div style={{textAlign:"center",color:"var(--muted)",padding:"40px 0"}}>Điều chỉnh tỷ trọng cho đủ 100%</div>}
+        </div>
+      ):<div style={{textAlign:"center",padding:"30px 0",color:"var(--muted)",fontSize:12}}>Điều chỉnh tỷ trọng cho đủ 100% để xem kết quả</div>}
     </div>
   );
 }
