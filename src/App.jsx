@@ -240,7 +240,7 @@ export default function App() {
   // Auto-fetch từ Google Drive khi app load
   useEffect(()=>{
     const URLS = [
-      "https://raw.githubusercontent.com/besthq2-tech/Qu-n-Tr-n-public-financial-data/refs/heads/main/data_vn_finance.json",
+      "https://raw.githubusercontent.com/besthq2-tech/Quan-Tran-public-finance-research/main/data_vn_finance.json",
     ];
     (async()=>{
       setLoading(true); setErr("");
