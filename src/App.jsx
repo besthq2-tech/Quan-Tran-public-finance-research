@@ -376,7 +376,7 @@ export default function App() {
       <style>{CSS}</style>
       <div style={{textAlign:"center",maxWidth:420,padding:"0 24px",width:"100%"}}>
         <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--accent)",letterSpacing:".2em",marginBottom:16}}>TRẦN ĐỨC HỒNG QUÂN</div>
-        <div style={{fontSize:20,fontWeight:700,marginBottom:20}}>Comprehensive Investing Research Tool</div>
+        <div style={{fontSize:15,fontWeight:700,marginBottom:20,whiteSpace:"nowrap"}}>Trần Đức Hồng Quân · Comprehensive Personal Investing Research Tool</div>
 
         {loading
           ? <div style={{color:"var(--muted)",fontSize:12,fontFamily:"JetBrains Mono",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
@@ -1410,7 +1410,7 @@ function PortfolioPanel({ allItems }) {
       {/* Allocation bar - active portfolio */}
       <div style={{display:"flex",borderRadius:8,overflow:"hidden",height:22,marginBottom:10}}>
         {apAllocs.map((a,i)=>(
-          <div key={i} style={{flex:a.w,background:PALETTE[i%PALETTE.length],display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#000",fontWeight:700,overflow:"hidden"}}>
+          <div key={i} style={{flex:a.w,background:COLORS[activeP%COLORS.length]+(i===0?"":"88"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#000",fontWeight:700,overflow:"hidden"}}>
             {a.w>8?(allItems[a.id]?.symbol||a.id)+" "+a.w+"%":""}
           </div>
         ))}
@@ -1421,10 +1421,15 @@ function PortfolioPanel({ allItems }) {
         {portfolios.map((port,pi)=>{
           const fin=allPortData[pi]?.fin||{value:0,invested:0};
           const roi=fin.invested>0?(fin.value-fin.invested)/fin.invested*100:0;
+          const c=COLORS[pi%COLORS.length];
           return (
-            <div key={pi} className="sc" style={{border:`1px solid ${COLORS[pi%COLORS.length]}44`,opacity:port.show?1:0.4}}>
-              <div style={{fontSize:9,color:COLORS[pi%COLORS.length],fontFamily:"JetBrains Mono",marginBottom:4,fontWeight:600}}>{port.name}</div>
-              <div className="mono" style={{fontSize:13,fontWeight:700,color:roi>=0?"#22d3ee":"#fb7185"}}>{roi>=0?"+":""}{roi.toFixed(2)}%</div>
+            <div key={pi} className="sc" style={{border:`1px solid ${c}`,opacity:port.show?1:0.35,
+              background:activeP===pi?c+"11":""}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                <div style={{width:12,height:12,borderRadius:3,background:c}}/>
+                <div style={{fontSize:9,color:c,fontFamily:"JetBrains Mono",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:120}}>{port.name}</div>
+              </div>
+              <div className="mono" style={{fontSize:14,fontWeight:700,color:roi>=0?"#22d3ee":"#fb7185"}}>{roi>=0?"+":""}{roi.toFixed(2)}%</div>
               <div style={{fontSize:9,color:"var(--muted)",marginTop:2}}>{fmtMv(fin.value)}</div>
             </div>
           );
@@ -1450,11 +1455,14 @@ function PortfolioPanel({ allItems }) {
             </LineChart>
           </ResponsiveContainer>
           <div style={{display:"flex",gap:14,justifyContent:"center",marginTop:8,flexWrap:"wrap"}}>
-            {portfolios.filter(p=>p.show).map((p,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--muted)"}}>
-                <div style={{width:16,height:2,background:COLORS[portfolios.indexOf(p)%COLORS.length],borderRadius:1}}/>{p.name}
+            {portfolios.map((p,pi)=>p.show&&(
+              <div key={pi} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--muted)"}}>
+                <div style={{width:16,height:2,background:COLORS[pi%COLORS.length],borderRadius:1}}/>{p.name}
               </div>
             ))}
+            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--muted)"}}>
+              <div style={{width:16,height:1,background:"#475569",borderRadius:1,borderTop:"2px dashed #475569"}}/> Tổng vốn
+            </div>
           </div>
         </div>
       ):<div style={{textAlign:"center",padding:"30px 0",color:"var(--muted)",fontSize:12}}>Điều chỉnh tỷ trọng cho đủ 100% để xem kết quả</div>}
