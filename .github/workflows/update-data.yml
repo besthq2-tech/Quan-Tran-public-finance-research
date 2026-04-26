@@ -1,0 +1,36 @@
+name: Update Finance Data
+
+on:
+  schedule:
+    - cron: '0 2 * * 1-5'   # 9:00 SA giờ VN (UTC+7), thứ 2-6
+    - cron: '0 9 * * 1-5'   # 4:00 CH giờ VN, thứ 2-6
+  workflow_dispatch:          # chạy thủ công khi cần
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch latest data
+        run: python tranquan_personal_finance_library.py
+
+      - name: Commit & push JSON
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data_vn_finance.json
+          git diff --staged --quiet && echo "No changes" || (
+            git commit -m "🔄 Auto update $(date +'%Y-%m-%d %H:%M UTC')"
+            git push
+          )
