@@ -1366,14 +1366,38 @@ function PortfolioPanel({ allItems }) {
         {apAllocs.map((a,i)=>(
           <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
             <select value={a.id} onChange={e=>setApAllocs(p=>p.map((x,j)=>j===i?{...x,id:e.target.value}:x))}
-              style={{flex:2,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--txt)",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none"}}>
-              {Object.values(allItems).map(f=><option key={f.id} value={f.id}>{f.symbol} — {f.name?.slice(0,28)}</option>)}
+              style={{flex:1,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--txt)",borderRadius:6,padding:"6px 8px",fontSize:11,outline:"none"}}>
+              {Object.values(allItems).map(f=><option key={f.id} value={f.id}>{f.symbol} — {f.name?.slice(0,30)}</option>)}
             </select>
-            <input type="range" min={0} max={100} value={a.w} onChange={e=>setApAllocs(p=>p.map((x,j)=>j===i?{...x,w:Number(e.target.value)}:x))} style={{flex:1,accentColor:COLORS[activeP%COLORS.length]}}/>
-            <input type="number" min={0} max={100} value={a.w} onChange={e=>setApAllocs(p=>p.map((x,j)=>j===i?{...x,w:Number(e.target.value)}:x))}
-              style={{width:48,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--txt)",borderRadius:6,padding:"4px 6px",fontFamily:"JetBrains Mono",fontSize:12,textAlign:"right",outline:"none"}}/>
-            <span style={{color:"var(--muted)",fontSize:11}}>%</span>
-            <button className="btn" style={{color:"#fb7185",borderColor:"#fb7185"}} onClick={()=>setApAllocs(p=>p.filter((_,j)=>j!==i))}>✕</button>
+            <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+              <input type="number" min={0} max={100} value={a.w}
+                onChange={e=>{
+                  const newW=Math.min(100,Math.max(0,Number(e.target.value)));
+                  setApAllocs(prev=>{
+                    const others=prev.filter((_,j)=>j!==i);
+                    const sumOthers=others.reduce((s,x)=>s+x.w,0);
+                    const remain=100-newW;
+                    let adjusted;
+                    if(sumOthers===0){
+                      // distribute equally
+                      const each=others.length>0?Math.floor(remain/others.length):0;
+                      const leftover=remain-each*others.length;
+                      adjusted=others.map((x,oi)=>({...x,w:each+(oi===0?leftover:0)}));
+                    } else {
+                      // distribute proportionally
+                      adjusted=others.map(x=>({...x,w:Math.round(x.w/sumOthers*remain)}));
+                      // fix rounding error on first item
+                      const adj=adjusted.reduce((s,x)=>s+x.w,0);
+                      if(adjusted.length>0) adjusted[0]={...adjusted[0],w:adjusted[0].w+(remain-adj)};
+                    }
+                    return prev.map((x,j)=>j===i?{...x,w:newW}:adjusted[j>i?j-1:j]);
+                  });
+                }}
+                style={{width:60,background:"var(--surface)",border:`1px solid ${COLORS[activeP%COLORS.length]}`,color:"var(--txt)",
+                  borderRadius:6,padding:"5px 8px",fontFamily:"JetBrains Mono",fontSize:13,textAlign:"right",outline:"none",fontWeight:700}}/>
+              <span style={{color:"var(--muted)",fontSize:12,fontFamily:"JetBrains Mono"}}>%</span>
+            </div>
+            <button className="btn" style={{color:"#fb7185",borderColor:"#fb7185",flexShrink:0}} onClick={()=>setApAllocs(p=>p.filter((_,j)=>j!==i))}>✕</button>
           </div>
         ))}
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
@@ -1400,22 +1424,106 @@ function PortfolioPanel({ allItems }) {
         ))}
       </div>
 
-      {/* Stats */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
-        {portfolios.map((port,pi)=>{
-          const fin=allPortData[pi]?.finalPct||0;
-          const c=COLORS[pi%COLORS.length];
-          return (
-            <div key={pi} className="sc" style={{border:`1px solid ${c}`,opacity:port.show?1:0.35,background:activeP===pi?c+"11":"",cursor:"pointer"}} onClick={()=>setActiveP(pi)}>
-              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
-                <div style={{width:10,height:10,borderRadius:2,background:c}}/>
-                <div style={{fontSize:10,color:"var(--txt)",fontFamily:"JetBrains Mono",fontWeight:700}}>{port.name}</div>
-              </div>
-              <div className="mono" style={{fontSize:14,fontWeight:700,color:fin>=0?"#22d3ee":"#fb7185"}}>{fin>=0?"+":""}{fin.toFixed(2)}%</div>
+      {/* Metrics table */}
+      {(() => {
+        // Compute metrics for each portfolio from points
+        const metrics = portfolios.map((port,pi)=>{
+          const pts = allPortData[pi]?.points||[];
+          if(pts.length < 5) return null;
+          const n = pts.length;
+          const totalDays = (new Date(pts[n-1].date)-new Date(pts[0].date))/86400000;
+          const years = totalDays/365;
+          if(years < 0.1) return null;
+          const startPct = pts[0].pct, endPct = pts[n-1].pct;
+          // Convert pct to value multiplier: 1 + pct/100
+          const vals = pts.map(p=>1+p.pct/100);
+          const rets = vals.slice(1).map((v,i)=> vals[i]>0?(v-vals[i])/vals[i]:0);
+          const avgR = rets.reduce((a,b)=>a+b,0)/(rets.length||1);
+          const vol = Math.sqrt(rets.reduce((a,b)=>a+(b-avgR)**2,0)/(rets.length||1))*Math.sqrt(252)*100;
+          const cagr = (Math.pow(vals[n-1], 1/years)-1)*100;
+          const sharpe = vol>0?(cagr/100)/(vol/100):0;
+          const downR = rets.filter(r=>r<0);
+          const downVol = downR.length>0?Math.sqrt(downR.reduce((a,b)=>a+b*b,0)/downR.length)*Math.sqrt(252):0.0001;
+          const sortino = (cagr/100)/downVol;
+          let peak=vals[0], mdd=0;
+          vals.forEach(v=>{ if(v>peak)peak=v; const dd=(v-peak)/peak*100; if(dd<mdd)mdd=dd; });
+          const calmar = mdd<0?cagr/Math.abs(mdd):0;
+          return {cagr,vol,sharpe,sortino,mdd,calmar,finalPct:endPct};
+        });
+
+        // Normalize for score
+        const valid = metrics.map((m,i)=>m?i:null).filter(i=>i!==null);
+        const scoreColor = v => v>=70?"#22d3ee":v>=50?"#f59e0b":"#fb7185";
+        let scores = portfolios.map(()=>null);
+        if(valid.length>=2){
+          const norm=(v,mn,mx)=>mx>mn?(v-mn)/(mx-mn)*100:50;
+          const cagrs=valid.map(i=>metrics[i].cagr), sharpes=valid.map(i=>metrics[i].sharpe);
+          const sortinos=valid.map(i=>metrics[i].sortino), mdds=valid.map(i=>metrics[i].mdd);
+          const [minC,maxC]=[Math.min(...cagrs),Math.max(...cagrs)];
+          const [minS,maxS]=[Math.min(...sharpes),Math.max(...sharpes)];
+          const [minSo,maxSo]=[Math.min(...sortinos),Math.max(...sortinos)];
+          const minM=Math.min(...mdds);
+          valid.forEach(i=>{
+            scores[i]=norm(metrics[i].cagr,minC,maxC)*0.4+norm(metrics[i].sharpe,minS,maxS)*0.175+norm(metrics[i].sortino,minSo,maxSo)*0.175+norm(-metrics[i].mdd,0,-minM)*0.25;
+          });
+        }
+
+        const cols=[
+          {k:"finalPct",l:"Return",   fmt:v=>(v>=0?"+":"")+v.toFixed(1)+"%",  c:v=>v>=30?"#22d3ee":v>=0?"#64748b":"#fb7185"},
+          {k:"cagr",    l:"CAGR",     fmt:v=>(v>=0?"+":"")+v.toFixed(1)+"%",  c:v=>v>=15?"#22d3ee":v>=0?"#64748b":"#fb7185"},
+          {k:"sharpe",  l:"Sharpe",   fmt:v=>v.toFixed(2),                     c:v=>v>=1?"#22d3ee":v>=0.5?"#f59e0b":"#fb7185"},
+          {k:"sortino", l:"Sortino",  fmt:v=>v.toFixed(2),                     c:v=>v>=1.5?"#22d3ee":v>=0.8?"#f59e0b":"#fb7185"},
+          {k:"mdd",     l:"Max DD",   fmt:v=>v.toFixed(1)+"%",                 c:v=>v>-15?"#22d3ee":v>-30?"#f59e0b":"#fb7185"},
+          {k:"calmar",  l:"Calmar",   fmt:v=>v.toFixed(2),                     c:v=>v>=1?"#22d3ee":v>=0.5?"#f59e0b":"#fb7185"},
+          {k:"vol",     l:"Vol/Y",    fmt:v=>v.toFixed(1)+"%",                 c:v=>v<15?"#22d3ee":v<25?"#f59e0b":"#fb7185"},
+        ];
+
+        // Sort by score for ranking
+        const ranked=[...portfolios.map((_,i)=>i)].filter(i=>metrics[i]).sort((a,b)=>(scores[b]||0)-(scores[a]||0));
+
+        return (
+          <div className="card" style={{overflow:"hidden",marginBottom:10}}>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",tableLayout:"fixed"}}>
+                <colgroup>
+                  <col style={{width:24}}/><col style={{width:130}}/>{scores[0]!==null&&<col style={{width:58}}/>}
+                  {cols.map(c=><col key={c.k} style={{width:68}}/>)}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={{textAlign:"center",fontSize:10}}>#</th>
+                    <th style={{fontSize:10}}>Danh mục</th>
+                    {scores[0]!==null&&<th style={{textAlign:"right",fontSize:10,color:"var(--accent)"}}>Score</th>}
+                    {cols.map(c=><th key={c.k} style={{textAlign:"right",fontSize:10,color:"var(--muted)"}}>{c.l}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ranked.map((pi,rank)=>{
+                    const m=metrics[pi]; if(!m) return null;
+                    const sc=scores[pi]; const c=COLORS[pi%COLORS.length];
+                    const medal=rank===0?"🥇":rank===1?"🥈":rank===2?"🥉":rank+1;
+                    return (
+                      <tr key={pi} style={{background:activeP===pi?c+"11":"",cursor:"pointer"}} onClick={()=>setActiveP(pi)}>
+                        <td style={{textAlign:"center",fontSize:11,fontWeight:700}}>{medal}</td>
+                        <td>
+                          <div style={{display:"flex",alignItems:"center",gap:5}}>
+                            <div style={{width:8,height:8,borderRadius:2,background:c,flexShrink:0}}/>
+                            <span style={{fontSize:10,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{portfolios[pi].name}</span>
+                          </div>
+                        </td>
+                        {sc!==null&&<td style={{textAlign:"right",fontFamily:"JetBrains Mono",fontSize:11,fontWeight:700,color:scoreColor(sc)}}>{sc.toFixed(0)}</td>}
+                        {cols.map(col=>(
+                          <td key={col.k} style={{textAlign:"right",fontFamily:"JetBrains Mono",fontSize:11,color:col.c(m[col.k])}}>{col.fmt(m[col.k])}</td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })()}
 
       {/* Chart */}
       {chartData.length>0?(
