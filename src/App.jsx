@@ -1241,147 +1241,128 @@ function LSDCAStopPanel({ item, allItems }) {
 // ════════════════════════════════════════════════════════════════
 
 function PortfolioPanel({ allItems }) {
-  // Multiple portfolios support
   const COLORS = ["#22d3ee","#f59e0b","#a78bfa","#34d399","#fb7185","#60a5fa"];
-  const mkPort = (name,allocs) => ({name, allocs, show:true});
-  const autoName = (allocs) => allocs.length===0?"Danh mục":allocs.map(a=>allItems[a.id]?.symbol||a.id).join(" + ");
+  const mkPort = (allocs) => {
+    const name = allocs.map(a=>allItems[a.id]?.symbol||a.id).join(" + ");
+    return {name, allocs, show:true};
+  };
+  const k = Object.keys(allItems);
   const [portfolios, setPortfolios] = useState([
-    (()=>{ const k=Object.keys(allItems); const a=[{id:k[0]||"28",w:60},{id:k[1]||"ACB",w:40}]; return mkPort(k.length>=2?(allItems[k[0]]?.symbol||k[0])+" + "+(allItems[k[1]]?.symbol||k[1]):"Danh mục 1", a); })()
+    {name:(allItems[k[0]]?.symbol||"A")+" + "+(allItems[k[1]]?.symbol||"B"), allocs:[{id:k[0]||"",w:60},{id:k[1]||"",w:40}], show:true}
   ]);
-  const [activeP,  setActiveP]  = useState(0);
-  const [amountM,  setAmountM]  = useState(1);
-  const [freq,     setFreq]     = useState("monthly");
-  const [preset,   setPreset]   = useState({l:"5Y",y:5});
+  const [activeP, setActiveP] = useState(0);
+  const [preset,  setPreset]  = useState({l:"5Y",y:5});
   const [customFrom,setCustomFrom]=useState(()=>{const t=new Date();t.setFullYear(t.getFullYear()-5);return fmtD(t);});
   const [customTo, setCustomTo] = useState(fmtD(new Date()));
 
-  const amount = amountM * 1_000_000;
-  const calDays = freq==="daily"?1:freq==="biweekly"?14:freq==="weekly"?7:30;
-  const fmtMv  = v => (v/1e6).toFixed(2)+"M";
-
   const {fromD:rawFrom, toD} = useMemo(()=>periodDates(preset,customFrom,customTo),[preset,customFrom,customTo]);
 
-  // Compute portData for each portfolio
+  // Compute weighted normalized return for each portfolio
   const allPortData = useMemo(()=>{
-    return portfolios.map(port => {
-      const allocs = port.allocs;
-      const totalW = allocs.reduce((s,a)=>s+a.w,0);
-      if(Math.abs(totalW-100)>=1 || !allocs.length) return {points:[], fin:{value:0,invested:0}, overlapFrom:rawFrom};
-      // Overlap
-      const overlapFrom = allocs.reduce((mx,{id})=>{
+    return portfolios.map(port=>{
+      const allocs=port.allocs;
+      const totalW=allocs.reduce((s,a)=>s+a.w,0);
+      if(Math.abs(totalW-100)>=1||!allocs.length) return {points:[],overlapFrom:rawFrom};
+
+      // Overlap: start from latest first-date among all assets
+      const overlapFrom=allocs.reduce((mx,{id})=>{
         const d=allItems[id]?.data||[];
         const first=d.find(x=>x.date>=rawFrom)?.date||rawFrom;
         return first>mx?first:mx;
-      }, rawFrom);
-      // Build lookup
-      const navLookup={}, dateSets=[];
-      allocs.forEach(({id})=>{
-        const d=(allItems[id]?.data||[]).filter(x=>x.date>=overlapFrom&&x.date<=toD);
-        dateSets.push(new Set(d.map(x=>x.date)));
-        navLookup[id]={};
-        d.forEach(x=>navLookup[id][x.date]=x.close);
-      });
-      if(!dateSets.length||!dateSets[0].size) return {points:[], fin:{value:0,invested:0}, overlapFrom};
-      const dates=[...dateSets[0]].filter(d=>dateSets.every(s=>s.has(d))).sort();
-      if(!dates.length) return {points:[], fin:{value:0,invested:0}, overlapFrom};
-      let units={}, totalInv=0, lastInvDate="";
-      allocs.forEach(({id})=>units[id]=0);
-      const points = dates.map((date,i)=>{
-        const gap2=lastInvDate?(new Date(date)-new Date(lastInvDate))/86400000:999;
-        if(i===0||gap2>=calDays){allocs.forEach(({id,w})=>{const nav=navLookup[id][date];if(nav)units[id]+=(amount*(w/100))/nav;});totalInv+=amount;lastInvDate=date;}
-        let val=0; allocs.forEach(({id})=>{val+=units[id]*(navLookup[id][date]||0);});
-        return {date, value:Math.round(val), invested:totalInv};
-      });
-      const fin = points[points.length-1]||{value:0,invested:0};
-      return {points, fin, overlapFrom};
-    });
-  },[portfolios,allItems,rawFrom,toD,amount,calDays]);
+      },rawFrom);
 
-  // Merged chart data — normalized to % ROI from start
-  const chartData = useMemo(()=>{
-    const map={};
-    // Find first value of each portfolio for normalization
-    const firstVal={};
-    portfolios.forEach((port,pi)=>{
-      if(!port.show) return;
-      const pts=allPortData[pi].points;
-      if(pts.length) firstVal[pi]=pts[0].invested||1;
+      // Build date-indexed nav for each asset
+      const navMap={};
+      allocs.forEach(({id})=>{
+        navMap[id]={};
+        (allItems[id]?.data||[]).filter(x=>x.date>=overlapFrom&&x.date<=toD).forEach(x=>navMap[id][x.date]=x.close);
+      });
+
+      // Common dates
+      const dateSets=allocs.map(({id})=>new Set(Object.keys(navMap[id])));
+      const dates=[...dateSets[0]].filter(d=>dateSets.every(s=>s.has(d))).sort();
+      if(!dates.length) return {points:[],overlapFrom};
+
+      // Normalize each asset to 1 at start, weighted sum
+      const startNav={};
+      allocs.forEach(({id})=>startNav[id]=navMap[id][dates[0]]||1);
+
+      const points=dates.map(date=>{
+        const weightedRet=allocs.reduce((sum,{id,w})=>{
+          const ret=(navMap[id][date]||startNav[id])/startNav[id]-1;
+          return sum+(ret*(w/100));
+        },0);
+        return {date, pct:parseFloat((weightedRet*100).toFixed(2))};
+      });
+
+      return {points, overlapFrom, finalPct:points[points.length-1]?.pct||0};
     });
+  },[portfolios,allItems,rawFrom,toD]);
+
+  // Merged chart (common dates across all visible)
+  const chartData = useMemo(()=>{
+    const visIdxs=portfolios.map((_,i)=>i).filter(i=>portfolios[i].show);
+    if(!visIdxs.length) return [];
+    const sets=visIdxs.map(i=>new Set(allPortData[i].points.map(p=>p.date)));
+    const common=new Set([...sets[0]].filter(d=>sets.every(s=>s.has(d))));
+    const map={};
     portfolios.forEach((port,pi)=>{
       if(!port.show) return;
       allPortData[pi].points.forEach(p=>{
-        if(!map[p.date]) map[p.date]={date:p.date,inv:0};
-        // % ROI = (value - invested) / invested * 100
-        const roi=p.invested>0?(p.value-p.invested)/p.invested*100:0;
-        map[p.date]["p"+pi]=parseFloat(roi.toFixed(2));
-        map[p.date].inv=0; // baseline
+        if(!common.has(p.date)) return;
+        if(!map[p.date]) map[p.date]={date:p.date};
+        map[p.date]["p"+pi]=p.pct;
       });
     });
     return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
-  },[allPortData, portfolios]);
+  },[allPortData,portfolios]);
 
-  const ap = portfolios[activeP]||portfolios[0];
-  const apAllocs = ap?.allocs||[];
-  const totalW = apAllocs.reduce((s,a)=>s+a.w,0);
-  const valid = Math.abs(totalW-100)<1;
-  const apData = allPortData[activeP]||{points:[],fin:{value:0,invested:0},overlapFrom:rawFrom};
+  const ap=portfolios[activeP]||portfolios[0];
+  const apAllocs=ap?.allocs||[];
+  const totalW=apAllocs.reduce((s,a)=>s+a.w,0);
+  const valid=Math.abs(totalW-100)<1;
+  const apOverlap=allPortData[activeP]?.overlapFrom||rawFrom;
 
-  const setApAllocs = fn => setPortfolios(prev=>prev.map((p,i)=>{
+  const setApAllocs=fn=>setPortfolios(prev=>prev.map((p,i)=>{
     if(i!==activeP) return p;
     const newAllocs=fn(p.allocs);
-    // Auto-update name only if it still looks auto-generated (contains + or %)
     const oldAuto=p.allocs.map(a=>allItems[a.id]?.symbol||a.id).join(" + ");
-    const isAuto=p.name===oldAuto||p.name.includes("%")||p.name==="Danh mục "+(i+1);
-    const newName=isAuto?newAllocs.map(a=>allItems[a.id]?.symbol||a.id).join(" + "):p.name;
-    return {...p,allocs:newAllocs,name:newName||p.name};
+    const isAuto=p.name===oldAuto||p.name==="Danh mục "+(i+1);
+    return {...p,allocs:newAllocs,name:isAuto?newAllocs.map(a=>allItems[a.id]?.symbol||a.id).join(" + "):p.name};
   }));
-  const addAlloc = ()=>{ const used=apAllocs.map(a=>a.id); const next=Object.keys(allItems).find(id=>!used.includes(id)); if(next)setApAllocs(p=>[...p,{id:next,w:0}]); };
-  const addPortfolio = ()=>{
-    const n=portfolios.length;
-    const k=Object.keys(allItems);
-    const firstSym=allItems[k[0]]?.symbol||k[0]||"Item";
-    setPortfolios(p=>[...p,mkPort(firstSym+" 100%",[{id:k[0]||"28",w:100}])]);
+
+  const addAlloc=()=>{const used=apAllocs.map(a=>a.id);const next=Object.keys(allItems).find(id=>!used.includes(id));if(next)setApAllocs(p=>[...p,{id:next,w:0}]);};
+  const addPortfolio=()=>{
+    const n=portfolios.length; const nk=Object.keys(allItems);
+    const sym=allItems[nk[0]]?.symbol||"Item";
+    setPortfolios(p=>[...p,{name:sym,allocs:[{id:nk[0]||"",w:100}],show:true}]);
     setActiveP(n);
   };
 
   return (
     <div>
       {/* Portfolio tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
         {portfolios.map((p,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:0}}>
-            <button onClick={()=>setActiveP(i)}
-              style={{padding:"5px 12px",borderRadius:"6px 0 0 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,
-                background:activeP===i?COLORS[i%COLORS.length]+"22":"transparent",
-                color:COLORS[i%COLORS.length],fontSize:11,cursor:"pointer",fontWeight:activeP===i?700:400}}>
-              ● {p.name}
-            </button>
-            <button onClick={()=>setPortfolios(prev=>prev.map((x,j)=>j===i?{...x,show:!x.show}:x))}
-              style={{padding:"5px 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,borderLeft:"none",
-                background:"transparent",color:p.show?COLORS[i%COLORS.length]:"#475569",fontSize:10,cursor:"pointer"}}>
-              {p.show?"👁":"○"}
-            </button>
-            {portfolios.length>1&&(
-              <button onClick={()=>{setPortfolios(prev=>prev.filter((_,j)=>j!==i));setActiveP(Math.max(0,activeP-1));}}
-                style={{padding:"5px 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,borderLeft:"none",
-                  borderRadius:"0 6px 6px 0",background:"transparent",color:"#fb7185",fontSize:10,cursor:"pointer"}}>✕</button>
-            )}
+          <div key={i} style={{display:"flex",alignItems:"center"}}>
+            <button onClick={()=>setActiveP(i)} style={{padding:"5px 12px",borderRadius:"6px 0 0 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,background:activeP===i?COLORS[i%COLORS.length]+"22":"transparent",color:COLORS[i%COLORS.length],fontSize:11,cursor:"pointer",fontWeight:activeP===i?700:400}}>{p.name}</button>
+            <button onClick={()=>setPortfolios(prev=>prev.map((x,j)=>j===i?{...x,show:!x.show}:x))} style={{padding:"5px 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,borderLeft:"none",background:"transparent",color:p.show?COLORS[i%COLORS.length]:"#475569",fontSize:10,cursor:"pointer"}}>{p.show?"👁":"○"}</button>
+            {portfolios.length>1&&<button onClick={()=>{setPortfolios(prev=>prev.filter((_,j)=>j!==i));setActiveP(Math.max(0,activeP-1));}} style={{padding:"5px 6px",border:`1px solid ${COLORS[i%COLORS.length]}`,borderLeft:"none",borderRadius:"0 6px 6px 0",background:"transparent",color:"#fb7185",fontSize:10,cursor:"pointer"}}>✕</button>}
           </div>
         ))}
         <button className="btn" onClick={addPortfolio} style={{fontSize:10}}>+ Danh mục mới</button>
       </div>
 
-      {/* Active portfolio name edit */}
+      {/* Name edit */}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
         <input value={ap?.name||""} onChange={e=>setPortfolios(prev=>prev.map((p,i)=>i===activeP?{...p,name:e.target.value}:p))}
-          style={{background:"var(--surface)",border:"1px solid var(--border2)",color:COLORS[activeP%COLORS.length],
-            borderRadius:6,padding:"4px 10px",fontSize:12,fontFamily:"Space Grotesk",outline:"none",width:160,fontWeight:600}}/>
-        <span style={{fontSize:10,color:"var(--muted)"}}>← tên danh mục</span>
+          style={{background:"var(--surface)",border:`1px solid ${COLORS[activeP%COLORS.length]}`,color:"var(--txt)",borderRadius:6,padding:"4px 10px",fontSize:12,fontFamily:"Space Grotesk",outline:"none",width:200,fontWeight:600}}/>
+        <span style={{fontSize:10,color:"var(--muted)"}}>← đặt tên</span>
       </div>
 
       {/* Alloc builder */}
       <div className="card" style={{padding:"12px 14px",marginBottom:10}}>
-        <div style={{fontSize:12,fontWeight:600,marginBottom:8,color:COLORS[activeP%COLORS.length]}}>🏗️ Xây danh mục (quỹ + ETF + CP đều được)</div>
+        <div style={{fontSize:11,fontWeight:600,marginBottom:8,color:COLORS[activeP%COLORS.length]}}>🏗️ Tỷ trọng (quỹ + ETF + CP)</div>
         {apAllocs.map((a,i)=>(
           <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
             <select value={a.id} onChange={e=>setApAllocs(p=>p.map((x,j)=>j===i?{...x,id:e.target.value}:x))}
@@ -1401,24 +1382,16 @@ function PortfolioPanel({ allItems }) {
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="card" style={{padding:"10px 14px",marginBottom:10,display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
-        <div><div style={{fontSize:9,color:"var(--muted)",marginBottom:5,textTransform:"uppercase",letterSpacing:".1em",fontFamily:"JetBrains Mono"}}>Mỗi kỳ (triệu ₫)</div>
-          <input type="number" value={amountM} onChange={e=>setAmountM(Math.max(0,Number(e.target.value)))} step={0.5} min={0} style={{width:80}}/></div>
-        <div><div style={{fontSize:9,color:"var(--muted)",marginBottom:5,textTransform:"uppercase",letterSpacing:".1em",fontFamily:"JetBrains Mono"}}>Tần suất</div>
-          <div style={{display:"flex",gap:4}}>{[["daily","Ngày"],["biweekly","2T"],["weekly","Tuần"],["monthly","Tháng"]].map(([v,l])=><button key={v} className={"btn "+(freq===v?"on":"")} style={{fontSize:10,padding:"3px 7px"}} onClick={()=>setFreq(v)}>{l}</button>)}</div></div>
-      </div>
-
-      {/* Period */}
+      {/* Period + Overlap */}
       <div className="card" style={{padding:"10px 14px",marginBottom:10}}>
         <PeriodBar preset={preset} setPreset={setPreset} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo}/>
         <div style={{fontSize:10,color:"var(--muted)",fontFamily:"JetBrains Mono",marginTop:4}}>
           {toVN(rawFrom)} → {toVN(toD)}
-          {apData.overlapFrom>rawFrom&&<span style={{color:"#f59e0b",marginLeft:10}}>⚠️ Overlap — bắt đầu từ {toVN(apData.overlapFrom)}</span>}
+          {apOverlap>rawFrom&&<span style={{color:"#f59e0b",marginLeft:10}}>⚠️ Overlap — bắt đầu từ {toVN(apOverlap)}</span>}
         </div>
       </div>
 
-      {/* Allocation bar - active portfolio */}
+      {/* Alloc bar */}
       <div style={{display:"flex",borderRadius:8,overflow:"hidden",height:22,marginBottom:10}}>
         {apAllocs.map((a,i)=>(
           <div key={i} style={{flex:a.w,background:COLORS[activeP%COLORS.length]+(i===0?"":"88"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#000",fontWeight:700,overflow:"hidden"}}>
@@ -1427,30 +1400,27 @@ function PortfolioPanel({ allItems }) {
         ))}
       </div>
 
-      {/* Stats - all portfolios */}
+      {/* Stats */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
         {portfolios.map((port,pi)=>{
-          const fin=allPortData[pi]?.fin||{value:0,invested:0};
-          const roi=fin.invested>0?(fin.value-fin.invested)/fin.invested*100:0;
+          const fin=allPortData[pi]?.finalPct||0;
           const c=COLORS[pi%COLORS.length];
           return (
-            <div key={pi} className="sc" style={{border:`1px solid ${c}`,opacity:port.show?1:0.35,
-              background:activeP===pi?c+"11":""}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                <div style={{width:12,height:12,borderRadius:3,background:c}}/>
-                <div style={{fontSize:9,color:c,fontFamily:"JetBrains Mono",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:120}}>{port.name}</div>
+            <div key={pi} className="sc" style={{border:`1px solid ${c}`,opacity:port.show?1:0.35,background:activeP===pi?c+"11":"",cursor:"pointer"}} onClick={()=>setActiveP(pi)}>
+              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
+                <div style={{width:10,height:10,borderRadius:2,background:c}}/>
+                <div style={{fontSize:10,color:"var(--txt)",fontFamily:"JetBrains Mono",fontWeight:700}}>{port.name}</div>
               </div>
-              <div className="mono" style={{fontSize:14,fontWeight:700,color:roi>=0?"#22d3ee":"#fb7185"}}>{roi>=0?"+":""}{roi.toFixed(2)}%</div>
-              <div style={{fontSize:9,color:"var(--muted)",marginTop:2}}>{fmtMv(fin.value)}</div>
+              <div className="mono" style={{fontSize:14,fontWeight:700,color:fin>=0?"#22d3ee":"#fb7185"}}>{fin>=0?"+":""}{fin.toFixed(2)}%</div>
             </div>
           );
         })}
       </div>
 
-      {/* Chart — all portfolios on same chart */}
+      {/* Chart */}
       {chartData.length>0?(
         <div className="card" style={{padding:"14px 4px 10px"}}>
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData} margin={{top:6,right:6,bottom:0,left:0}}>
               <CartesianGrid stroke="#1a2235" strokeDasharray="3 3" vertical={false}/>
               <XAxis dataKey="date" tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false}
@@ -1471,12 +1441,9 @@ function PortfolioPanel({ allItems }) {
                 <div style={{width:16,height:2,background:COLORS[pi%COLORS.length],borderRadius:1}}/>{p.name}
               </div>
             ))}
-            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--muted)"}}>
-              <div style={{width:16,height:1,background:"#475569",borderStyle:"dashed",borderTop:"2px dashed #475569"}}/> 0% (breakeven)
-            </div>
           </div>
         </div>
-      ):<div style={{textAlign:"center",padding:"30px 0",color:"var(--muted)",fontSize:12}}>Điều chỉnh tỷ trọng cho đủ 100% để xem kết quả</div>}
+      ):<div style={{textAlign:"center",padding:"30px 0",color:"var(--muted)",fontSize:12}}>{valid?"Không đủ dữ liệu overlap cho giai đoạn này":"Điều chỉnh tỷ trọng cho đủ 100%"}</div>}
     </div>
   );
 }
