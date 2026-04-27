@@ -1264,7 +1264,18 @@ function PortfolioPanel({ allItems }) {
       const totalW=allocs.reduce((s,a)=>s+a.w,0);
       if(Math.abs(totalW-100)>=1||!allocs.length) return {points:[],overlapFrom:rawFrom};
 
-      // Overlap: start from latest first-date among all assets
+      // Enforce: ALL assets must have data FROM the start of the period
+      // (same rule as Ranking tab — no partial history allowed)
+      const missingAssets=allocs.filter(({id})=>{
+        const firstDate=allItems[id]?.data?.[0]?.date||"9999";
+        return firstDate>rawFrom;
+      });
+      if(missingAssets.length>0){
+        const names=missingAssets.map(({id})=>allItems[id]?.symbol||id).join(", ");
+        return {points:[],overlapFrom:rawFrom,error:`${names} chưa có data từ đầu giai đoạn`};
+      }
+
+      // Overlap: start from latest first-date among all assets within range
       const overlapFrom=allocs.reduce((mx,{id})=>{
         const d=allItems[id]?.data||[];
         const first=d.find(x=>x.date>=rawFrom)?.date||rawFrom;
@@ -1479,7 +1490,8 @@ function PortfolioPanel({ allItems }) {
         ];
 
         // Sort by score for ranking
-        const ranked=[...portfolios.map((_,i)=>i)].filter(i=>metrics[i]).sort((a,b)=>(scores[b]||0)-(scores[a]||0));
+        const ranked=[...portfolios.map((_,i)=>i)].filter(i=>metrics[i]&&!allPortData[i]?.error).sort((a,b)=>(scores[b]||0)-(scores[a]||0));
+        const errPorts=portfolios.map((_,i)=>i).filter(i=>allPortData[i]?.error);
 
         return (
           <div className="card" style={{overflow:"hidden",marginBottom:10}}>
@@ -1518,6 +1530,20 @@ function PortfolioPanel({ allItems }) {
                       </tr>
                     );
                   })}
+                  {errPorts.map(pi=>(
+                    <tr key={"err"+pi} style={{opacity:0.5}}>
+                      <td style={{textAlign:"center"}}>—</td>
+                      <td>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <div style={{width:8,height:8,borderRadius:2,background:COLORS[pi%COLORS.length]}}/>
+                          <span style={{fontSize:10,fontWeight:600}}>{portfolios[pi].name}</span>
+                        </div>
+                      </td>
+                      <td colSpan={cols.length+1} style={{fontSize:10,color:"#fb7185",fontFamily:"JetBrains Mono",paddingLeft:8}}>
+                        ⚠️ {allPortData[pi].error}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1551,7 +1577,11 @@ function PortfolioPanel({ allItems }) {
             ))}
           </div>
         </div>
-      ):<div style={{textAlign:"center",padding:"30px 0",color:"var(--muted)",fontSize:12}}>{valid?"Không đủ dữ liệu overlap cho giai đoạn này":"Điều chỉnh tỷ trọng cho đủ 100%"}</div>}
+      ):<div style={{textAlign:"center",padding:"30px 0",color:"var(--muted)",fontSize:12}}>{(()=>{
+              const errs=portfolios.map((p,pi)=>allPortData[pi]?.error).filter(Boolean);
+              if(errs.length) return errs.join(" | ");
+              return valid?"Không đủ dữ liệu overlap cho giai đoạn này":"Điều chỉnh tỷ trọng cho đủ 100%";
+            })()}</div>}
     </div>
   );
 }
