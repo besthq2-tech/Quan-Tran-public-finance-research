@@ -71,14 +71,14 @@ function calcStats(data) {
 function runDCA(data, fromD, toD, amount, freq, initCap=0) {
   const d = (data||[]).filter(x=>x.date>=fromD&&x.date<=toD);
   if(!d.length) return {points:[],fin:{value:0,invested:0,units:0,avgNav:0},log:[]};
-  const step = freq==="daily"?1:freq==="biweekly"?10:freq==="weekly"?5:21;
-  // Initial capital invested on day 1
-  let inv=initCap, units=initCap>0&&d[0].close>0?initCap/d[0].close:0;
+  const calDays = freq==="daily"?1:freq==="biweekly"?14:freq==="weekly"?7:30;
+  let inv=initCap, units=initCap>0&&d[0].close>0?initCap/d[0].close:0, lastD="";
   const points=[],log=[];
   if(initCap>0&&d[0]) log.push({date:d[0].date,nav:d[0].close,units:parseFloat(units.toFixed(4)),totalUnits:parseFloat(units.toFixed(4)),invested:inv,isInit:true});
   d.forEach((x,i)=>{
-    const buy=i%step===0;
-    if(buy){const u=amount/x.close;units+=u;inv+=amount;log.push({date:x.date,nav:x.close,units:parseFloat(u.toFixed(4)),totalUnits:parseFloat(units.toFixed(4)),invested:inv});}
+    const gap=lastD?(new Date(x.date)-new Date(lastD))/86400000:999;
+    const buy=i===0||gap>=calDays;
+    if(buy){const u=amount/x.close;units+=u;inv+=amount;lastD=x.date;log.push({date:x.date,nav:x.close,units:parseFloat(u.toFixed(4)),totalUnits:parseFloat(units.toFixed(4)),invested:inv});}
     points.push({date:x.date,value:Math.round(units*x.close),invested:inv});
   });
   const last=points[points.length-1]||{value:0,invested:0};
@@ -1256,7 +1256,7 @@ function PortfolioPanel({ allItems }) {
   const [customTo, setCustomTo] = useState(fmtD(new Date()));
 
   const amount = amountM * 1_000_000;
-  const step   = freq==="daily"?1:freq==="biweekly"?10:freq==="weekly"?5:21;
+  const calDays = freq==="daily"?1:freq==="biweekly"?14:freq==="weekly"?7:30;
   const fmtMv  = v => (v/1e6).toFixed(2)+"M";
 
   const {fromD:rawFrom, toD} = useMemo(()=>periodDates(preset,customFrom,customTo),[preset,customFrom,customTo]);
@@ -1287,7 +1287,8 @@ function PortfolioPanel({ allItems }) {
       let units={}, totalInv=0;
       allocs.forEach(({id})=>units[id]=0);
       const points = dates.map((date,i)=>{
-        if(i%step===0){allocs.forEach(({id,w})=>{const nav=navLookup[id][date];if(nav)units[id]+=(amount*(w/100))/nav;});totalInv+=amount;}
+        const gap2=lastInvDate?(new Date(date)-new Date(lastInvDate))/86400000:999;
+      if(i===0||gap2>=calDays){allocs.forEach(({id,w})=>{const nav=navLookup[id][date];if(nav)units[id]+=(amount*(w/100))/nav;});totalInv+=amount;lastInvDate=date;}
         let val=0; allocs.forEach(({id})=>{val+=units[id]*(navLookup[id][date]||0);});
         return {date, value:Math.round(val), invested:totalInv};
       });
