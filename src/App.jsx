@@ -1284,18 +1284,18 @@ function PortfolioPanel({ allItems }) {
       if(!dateSets.length||!dateSets[0].size) return {points:[], fin:{value:0,invested:0}, overlapFrom};
       const dates=[...dateSets[0]].filter(d=>dateSets.every(s=>s.has(d))).sort();
       if(!dates.length) return {points:[], fin:{value:0,invested:0}, overlapFrom};
-      let units={}, totalInv=0;
+      let units={}, totalInv=0, lastInvDate="";
       allocs.forEach(({id})=>units[id]=0);
       const points = dates.map((date,i)=>{
         const gap2=lastInvDate?(new Date(date)-new Date(lastInvDate))/86400000:999;
-      if(i===0||gap2>=calDays){allocs.forEach(({id,w})=>{const nav=navLookup[id][date];if(nav)units[id]+=(amount*(w/100))/nav;});totalInv+=amount;lastInvDate=date;}
+        if(i===0||gap2>=calDays){allocs.forEach(({id,w})=>{const nav=navLookup[id][date];if(nav)units[id]+=(amount*(w/100))/nav;});totalInv+=amount;lastInvDate=date;}
         let val=0; allocs.forEach(({id})=>{val+=units[id]*(navLookup[id][date]||0);});
         return {date, value:Math.round(val), invested:totalInv};
       });
       const fin = points[points.length-1]||{value:0,invested:0};
       return {points, fin, overlapFrom};
     });
-  },[portfolios,allItems,rawFrom,toD,amount,step]);
+  },[portfolios,allItems,rawFrom,toD,amount,calDays]);
 
   // Merged chart data — normalized to % ROI from start
   const chartData = useMemo(()=>{
