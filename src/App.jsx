@@ -249,6 +249,10 @@ export default function App() {
       return first>mx?first:mx;
     }, from);
   },[cmpIds,allItems,from]);
+  // Items that don't cover full period (for warning display)
+  const cmpMissingFull = useMemo(()=>
+    cmpIds.filter(id=>{ const f=allItems[id]?.data?.[0]?.date||"9999"; return f>from; })
+  ,[cmpIds,allItems,from]);
 
   const filteredOverlap = useCallback(id=>{
     const item=allItems[id]; if(!item) return [];
@@ -664,6 +668,9 @@ export default function App() {
                   {cmpIds.length>=2&&(overlapFrom>from)&&(
                     <div style={{marginTop:8,fontSize:11,color:"#f59e0b",fontFamily:"JetBrains Mono"}}>
                       ⚠️ Overlap từ {toVN(overlapFrom)} (ngày bắt đầu muộn nhất)
+                      {cmpMissingFull.length>0&&<span style={{color:"#fb7185",marginLeft:8}}>
+                        — {cmpMissingFull.map(id=>allItems[id]?.symbol).join(", ")} chưa có data từ đầu giai đoạn
+                      </span>}
                     </div>
                   )}
                 </div>
@@ -1255,7 +1262,21 @@ function PortfolioPanel({ allItems }) {
   const [customFrom,setCustomFrom]=useState(()=>{const t=new Date();t.setFullYear(t.getFullYear()-5);return fmtD(t);});
   const [customTo, setCustomTo] = useState(fmtD(new Date()));
 
-  const {fromD:rawFrom, toD} = useMemo(()=>periodDates(preset,customFrom,customTo),[preset,customFrom,customTo]);
+  // Compute effective "from" — for ALL preset, use latest first-date across all assets in all portfolios
+  const effectiveFrom = useMemo(()=>{
+    if(preset?.y !== null) return null; // only override for ALL
+    let latestFirst = "2000-01-01";
+    portfolios.forEach(port=>{
+      port.allocs.forEach(({id})=>{
+        const first = allItems[id]?.data?.[0]?.date||"2000-01-01";
+        if(first > latestFirst) latestFirst = first;
+      });
+    });
+    return latestFirst;
+  },[preset, portfolios, allItems]);
+
+  const {fromD:rawFromBase, toD} = useMemo(()=>periodDates(preset,customFrom,customTo),[preset,customFrom,customTo]);
+  const rawFrom = effectiveFrom || rawFromBase;
 
   // Compute weighted normalized return for each portfolio
   const allPortData = useMemo(()=>{
