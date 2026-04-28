@@ -1017,8 +1017,53 @@ function DCAPanel({ item, allItems }) {
   const roi1=f1.invested>0?(f1.value-f1.invested)/f1.invested*100:0;
   const roi2=f2.invested>0?(f2.value-f2.invested)/f2.invested*100:0;
   const lsFin=ls[ls.length-1], lsRoi=lsFin&&f1.invested>0?(lsFin.value-f1.invested)/f1.invested*100:null;
-  const fmtM=v=>(v/1e6).toFixed(2)+"M";
+  const fmtM=v=>v>=1e9?(v/1e9).toFixed(2)+"B":(v/1e6).toFixed(2)+"M";
   const cagr1=(()=>{const d=(new Date(toD)-new Date(ef))/86400000;return d>0?(Math.pow(f1.value/f1.invested,365/d)-1)*100:null;})();
+
+  // ── Portfolio DCA computation ──────────────────────────────────────────────
+  const portResult = useMemo(()=>{
+    if(!portMode||!portValid) return null;
+    // Enforce: all assets must have data from rawFrom
+    const missing = portAllocs.filter(({id})=>(allItems[id]?.data?.[0]?.date||"9999")>rawFrom);
+    if(missing.length>0) return {error: missing.map(({id})=>allItems[id]?.symbol||id).join(", ")+" chưa có data từ đầu giai đoạn"};
+    // Overlap: max first date across all assets
+    const portFrom = portAllocs.reduce((mx,{id})=>{
+      const f=(allItems[id]?.data||[]).find(x=>x.date>=rawFrom)?.date||rawFrom;
+      return f>mx?f:mx;
+    }, rawFrom);
+    // Build nav lookup
+    const navMap={};
+    portAllocs.forEach(({id})=>{
+      navMap[id]={};
+      (allItems[id]?.data||[]).filter(x=>x.date>=portFrom&&x.date<=toD).forEach(x=>navMap[id][x.date]=x.close);
+    });
+    // Common dates
+    const sets=portAllocs.map(({id})=>new Set(Object.keys(navMap[id])));
+    const dates=[...sets[0]].filter(d=>sets.every(s=>s.has(d))).sort();
+    if(!dates.length) return {error:"Không đủ dữ liệu overlap"};
+    // DCA: invest each date based on calendar interval, split by weight
+    const calDays=freq==="daily"?1:freq==="biweekly"?14:freq==="weekly"?7:30;
+    const units={}; portAllocs.forEach(({id})=>units[id]=0);
+    // Init cap
+    if(initCap>0&&dates[0]){
+      portAllocs.forEach(({id,w})=>{const nav=navMap[id][dates[0]];if(nav)units[id]+=(initCap*(w/100))/nav;});
+    }
+    let totalInv=initCap, lastD="";
+    const points=dates.map((date,i)=>{
+      const gap=lastD?(new Date(date)-new Date(lastD))/86400000:999;
+      if(i===0||gap>=calDays){
+        portAllocs.forEach(({id,w})=>{const nav=navMap[id][date];if(nav)units[id]+=(amount*(w/100))/nav;});
+        totalInv+=amount; lastD=date;
+      }
+      let val=0; portAllocs.forEach(({id})=>{val+=units[id]*(navMap[id][date]||0);});
+      return {date,value:Math.round(val),invested:totalInv};
+    });
+    const fin=points[points.length-1]||{value:0,invested:1};
+    const roi=(fin.value-fin.invested)/fin.invested*100;
+    const days=(new Date(toD)-new Date(portFrom))/86400000;
+    const cagr=days>0?(Math.pow(fin.value/fin.invested,365/days)-1)*100:0;
+    return {points, fin, roi, cagr, portFrom};
+  },[portMode,portValid,portAllocs,allItems,rawFrom,toD,amount,freq,initCap]);
 
   const rollStats=useMemo(()=>{
     if(!roll.length) return null;
@@ -1063,6 +1108,11 @@ function DCAPanel({ item, allItems }) {
       </div>
 
       {/* Portfolio builder in portMode */}
+      {portMode&&!portValid&&(
+        <div style={{fontSize:12,color:"#fb7185",padding:"6px 10px",background:"rgba(251,113,133,.1)",borderRadius:6,marginBottom:8,fontFamily:"JetBrains Mono"}}>
+          Tổng: {totalPortW}% — cần đủ 100%
+        </div>
+      )}
       {portMode&&portValid&&(
         <div className="card" style={{padding:"12px 14px",marginBottom:10}}>
           <div style={{fontSize:11,fontWeight:600,marginBottom:8,color:"var(--accent)"}}>🏗️ Tỷ trọng danh mục</div>
@@ -1114,6 +1164,42 @@ function DCAPanel({ item, allItems }) {
 
       {dcaTab===0&&(
         <>
+          {/* Portfolio mode result */}
+          {portMode&&portResult?.error&&(
+            <div style={{color:"#fb7185",fontSize:12,fontFamily:"JetBrains Mono",padding:"10px 14px",background:"rgba(251,113,133,.1)",borderRadius:8,marginBottom:10}}>
+              ⚠️ {portResult.error}
+            </div>
+          )}
+          {portMode&&portResult&&!portResult.error&&(
+            <>
+              <div style={{fontSize:10,color:"var(--muted)",fontFamily:"JetBrains Mono",marginBottom:8}}>
+                📅 {toVN(portResult.portFrom)} → {toVN(toD)}
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                {[["Đầu tư",fmtM(portResult.fin.invested),"var(--muted)"],["Giá trị",fmtM(portResult.fin.value),"#22d3ee"],["ROI",(portResult.roi>=0?"+":"")+portResult.roi.toFixed(2)+"%",portResult.roi>=0?"#22d3ee":"#fb7185"],["CAGR",(portResult.cagr>=0?"+":"")+portResult.cagr.toFixed(1)+"%","#f59e0b"]].map(([l,v,c])=>sc(l,v,c))}
+              </div>
+              <div className="card" style={{padding:"14px 4px 10px"}}>
+                <ResponsiveContainer width="100%" height={240}>
+                  <AreaChart data={portResult.points} margin={{top:6,right:6,bottom:0,left:0}}>
+                    <defs>
+                      <linearGradient id="gPort" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="var(--accent)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#1a2235" strokeDasharray="3 3" vertical={false}/>
+                    <XAxis dataKey="date" tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false} tickFormatter={v=>{const[y,m]=v.split("-");return m+"/"+y.slice(2);}} interval="preserveStartEnd"/>
+                    <YAxis tick={{fill:"#64748b",fontSize:10,fontFamily:"JetBrains Mono"}} tickLine={false} axisLine={false} tickFormatter={v=>v>=1e9?(v/1e9).toFixed(0)+"B":(v/1e6).toFixed(0)+"M"} width={44}/>
+                    <Tooltip formatter={(v,n)=>[fmtM(v),n]} labelFormatter={l=>toVN(l)} contentStyle={{background:"#0e1520",border:"1px solid #1a2235",borderRadius:6,fontFamily:"JetBrains Mono",fontSize:11}}/>
+                    <Area type="monotone" dataKey="value" name="Giá trị" stroke="var(--accent)" strokeWidth={2} fill="url(#gPort)" dot={false}/>
+                    <Area type="monotone" dataKey="invested" name="Vốn đầu tư" stroke="#475569" strokeWidth={1} fill="none" strokeDasharray="4 3" dot={false}/>
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
+          {/* Single mode result */}
+          {!portMode&&(<>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
             {[["Đầu tư",fmtM(f1.invested),"var(--muted)"],["Giá trị",fmtM(f1.value),"#22d3ee"],["ROI",(roi1>=0?"+":"")+roi1.toFixed(2)+"%",roi1>=0?"#22d3ee":"#fb7185"],["CAGR",cagr1!=null?(cagr1>=0?"+":"")+cagr1.toFixed(1)+"%":"—","#f59e0b"],
               ...(cmpItem?[[""+cmpItem.symbol+" ROI",(roi2>=0?"+":"")+roi2.toFixed(2)+"%",roi2>=0?"#a78bfa":"#fb7185"]]:[])]
@@ -1137,6 +1223,7 @@ function DCAPanel({ item, allItems }) {
               </AreaChart>
             </ResponsiveContainer>
           </div>
+        </>)}
         </>
       )}
 
@@ -1268,7 +1355,7 @@ function LSDCAStopPanel({ item, allItems }) {
   const roiLS   =lsFin&&fd.invested>0?(lsFin.value-fd.invested)/fd.invested*100:0;
   const roiStop =fs.invested>0?(fs.value-fs.invested)/fs.invested*100:0;
   const roiCmp  =cmpStop.fin.invested>0?(cmpStop.fin.value-cmpStop.fin.invested)/cmpStop.fin.invested*100:0;
-  const fmtM=v=>(v/1e6).toFixed(2)+"M";
+  const fmtM=v=>v>=1e9?(v/1e9).toFixed(2)+"B":(v/1e6).toFixed(2)+"M";
   const best=Math.max(roiDCA,roiLS,roiStop);
   const sc=(l,v,c,star)=><div key={l} className="sc" style={{border:star?"1px solid #22d3ee":""}}><div style={{fontSize:9,color:"var(--muted)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:6,fontFamily:"JetBrains Mono"}}>{star?"🏆 ":""}{l}</div><div className="mono" style={{fontSize:13,fontWeight:700,color:c}}>{v}</div></div>;
 
