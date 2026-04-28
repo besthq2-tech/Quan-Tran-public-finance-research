@@ -992,7 +992,19 @@ function DCAPanel({ item, allItems }) {
   const selItem = allItems[itemId] || item;
   const cmpItem = cmpId ? allItems[cmpId] : null;
 
-  const {fromD:rawFrom, toD} = useMemo(()=>periodDates(preset,customFrom,customTo),[preset,customFrom,customTo]);
+  const {fromD:rawFromBase, toD} = useMemo(()=>periodDates(preset,customFrom,customTo),[preset,customFrom,customTo]);
+
+  // For ALL preset in portMode: auto-use latest first-date across all assets
+  const rawFrom = useMemo(()=>{
+    if(preset?.l!=="ALL") return rawFromBase;
+    if(portMode&&portValid){
+      return portAllocs.reduce((mx,{id})=>{
+        const f=allItems[id]?.data?.[0]?.date||"2000-01-01";
+        return f>mx?f:mx;
+      },"2000-01-01");
+    }
+    return rawFromBase;
+  },[preset,rawFromBase,portMode,portValid,portAllocs,allItems]);
 
   // Clamp fromD to item's actual first data date
   const itemFirst  = selItem.data[0]?.date || rawFrom;
