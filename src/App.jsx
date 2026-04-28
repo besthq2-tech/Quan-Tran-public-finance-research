@@ -108,39 +108,78 @@ function runRollingDCA(data, holdMonths, amount, freq) {
 
 // ── CSS ──────────────────────────────────────────────────────────────────────
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
-*{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#080c14;--surface:#0e1520;--border:#1a2235;--border2:#242f45;--txt:#e2e8f0;--muted:#64748b;--accent:#22d3ee;--accent2:#f59e0b}
-body{background:var(--bg);color:var(--txt);font-family:'Space Grotesk',sans-serif}
-.mono{font-family:'JetBrains Mono',monospace}
-input[type=date]{background:var(--surface);border:1px solid var(--border2);color:var(--txt);border-radius:6px;padding:5px 10px;font-size:12px;outline:none;font-family:'JetBrains Mono',monospace}
-input[type=date]:focus{border-color:var(--accent)}
-input[type=number]{background:var(--surface);border:1px solid var(--border2);color:var(--txt);border-radius:6px;padding:6px 12px;font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;width={160}px}
-input[type=number]:focus{border-color:var(--accent)}
-.btn{background:transparent;border:1px solid var(--border2);color:var(--muted);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;transition:all .15s;font-family:'Space Grotesk',sans-serif;font-weight:500}
-.btn:hover{border-color:var(--accent);color:var(--accent)}
-.btn.on{background:rgba(34,211,238,.1);border-color:var(--accent);color:var(--accent);font-weight:600}
-.btn.danger{border-color:#fb7185;color:#fb7185}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:10px}
-.fc{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:all .15s}
-.fc:hover{border-color:var(--border2)}
-.fc.sel{border-color:var(--accent);background:rgba(34,211,238,.06)}
-.fc.cmp{border-color:var(--accent2);background:rgba(245,158,11,.06)}
-.tab-btn{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);padding:8px 12px;font-size:11px;cursor:pointer;transition:all .15s;font-weight:500;font-family:'Space Grotesk',sans-serif;white-space:nowrap}
-.tab-btn.on{border-bottom-color:var(--accent);color:var(--txt)}
-.sc{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width={90}px}
-.badge{font-size:9px;padding:2px 7px;border-radius:20px;font-weight:600;letter-spacing:.04em;white-space:nowrap}
-table{border-collapse:collapse;width={100}%}
-th{text-align:left;padding:8px 12px;font-size:10px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1;white-space:nowrap;font-family:'JetBrains Mono',monospace}
-td{padding:7px 12px;font-size:12px;border-bottom:1px solid var(--bg);font-family:'JetBrains Mono',monospace}
-tr:hover td{background:rgba(255,255,255,.02)}
-.spin{width={28}px;height:28px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
-.uzone{border:2px dashed var(--border2);border-radius:14px;padding:44px 24px;text-align:center;cursor:pointer;transition:all .2s}
-.uzone:hover{border-color:var(--accent);background:rgba(34,211,238,.03)}
-::-webkit-scrollbar{width={4}px;height:4px}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
-`;
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;}
+:root{--bg:#0a0f1a;--surface:#0e1520;--border:#1a2235;--border2:#243048;--txt:#e2e8f0;--muted:#64748b;--accent:#22d3ee;}
+
+/* Fluid base font — scales from 10px (320px screen) to 14px (1440px) */
+html{font-size:clamp(10px,0.8vw + 8px,14px);}
+body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:'Space Grotesk',sans-serif;overflow:hidden;}
+
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#243048;border-radius:2px;}
+
+/* Tab nav */
+.tab-btn{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;padding:.6em .9em;font-size:.85em;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:color .15s;}
+.tab-btn:hover{color:var(--txt);}
+
+/* Buttons */
+.btn{background:transparent;border:1px solid var(--border2);color:var(--muted);border-radius:6px;padding:.3em .7em;font-size:.8em;font-family:'Space Grotesk',sans-serif;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.btn:hover{border-color:var(--accent);color:var(--txt);}
+.btn.on{background:rgba(34,211,238,.12);border-color:var(--accent);color:var(--accent);}
+.btn.danger{border-color:#fb7185;color:#fb7185;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+
+/* Stat cards — fluid sizing */
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.8em 1.1em;min-width:80px;flex:1;}
+
+/* Fund cards */
+.fc{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.55em .75em;cursor:pointer;transition:border-color .15s;}
+.fc:hover{border-color:var(--border2);}
+.fc.sel{border-color:var(--accent);background:rgba(34,211,238,.05);}
+.fc.cmp{border-color:#f59e0b;background:rgba(245,158,11,.05);}
+
+/* Badge */
+.badge{font-size:.72em;padding:1px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;}
+
+/* Mono */
+.mono{font-family:'JetBrains Mono',monospace;}
+
+/* Upload zone */
+.uzone{border:2px dashed var(--border2);border-radius:10px;padding:2em;text-align:center;cursor:pointer;transition:border-color .15s;}
+.uzone:hover{border-color:var(--accent);}
+
+/* Spinner */
+.spin{width:22px;height:22px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* Table — em-based so it scales with html font-size */
+table{border-collapse:collapse;width:100%;}
+th{padding:.45em .55em;text-align:left;font-size:.78em;color:var(--muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border);background:rgba(14,21,32,.8);}
+td{padding:.5em .55em;border-bottom:1px solid var(--border);font-size:.85em;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,.02);}
+
+/* Inputs — fluid */
+input[type=number],input[type=text],input[type=date],select{background:var(--surface);border:1px solid var(--border2);color:var(--txt);border-radius:6px;padding:.4em .65em;font-size:.88em;font-family:'Space Grotesk',sans-serif;outline:none;}
+input:focus,select:focus{border-color:var(--accent);}
+
+/* Content area */
+.main-content{flex:1;overflow-y:auto;overflow-x:hidden;padding:clamp(8px,1.2vw,16px) clamp(10px,1.6vw,20px);min-width:0;}
+
+/* Stats row responsive */
+.stats-row{display:flex;gap:.6em;flex-wrap:wrap;margin-bottom:.8em;}
+.stats-row .sc{flex:1;min-width:min(80px,18vw);}
+
+/* Recharts responsive */
+.recharts-tooltip-wrapper *{font-size:.85em !important;}
+`
+;
 
 const Tip = ({active,payload,label,fmt}) => {
   if(!active||!payload?.length) return null;
@@ -413,7 +452,7 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:28,height:28,background:"linear-gradient(135deg,var(--accent),#818cf8)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#080c14"}}>Q</div>
           <div>
-            <span style={{fontWeight:700,fontSize:13}}>Trần Đức Hồng Quân · Comprehensive Personal Investing Research Tool</span>
+            <span style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"calc(100vw - 200px)",display:"inline-block"}}>Trần Đức Hồng Quân · Comprehensive Personal Investing Research Tool</span>
             <span style={{color:"var(--muted)",fontSize:11,marginLeft:8}}>
               {Object.values(allItems).filter(x=>x.isFund).length} quỹ ·{" "}
               {Object.values(allItems).filter(x=>x.type==="ETF").length} ETF ·{" "}
@@ -425,11 +464,11 @@ export default function App() {
         <button className="btn" onClick={()=>{setLoaded(false);setAllItems({});setSelId(null);setCmpIds([]);setErr("");}}>↩ Reload</button>
       </div>
 
-      <div style={{display:"flex",height:"calc(100vh - 53px)"}}>
+      <div style={{display:"flex",height:"calc(100vh - 53px)",flexDirection:"row"}}>
 
         {/* SIDEBAR — ẩn ở tab 5+ */}
-        {tab<=4&&(
-          <div style={{width:195,flexShrink:0,borderRight:"1px solid var(--border)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        {tab<=3&&(
+          <div style={{width:"min(195px,38vw)",minWidth:130,maxWidth:220,flexShrink:0,borderRight:"1px solid var(--border)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
             {/* Search + Category filter */}
             <div style={{padding:"7px 7px 4px",borderBottom:"1px solid var(--border)"}}>
               {/* Search */}
@@ -534,7 +573,7 @@ export default function App() {
             ))}
           </div>
 
-          <div style={{flex:1,overflow:"auto",padding:"12px 14px"}}>
+          <div style={{flex:1,overflow:"auto",padding:"10px 10px",minWidth:0}}>
 
             {/* DATE BAR */}
             {tab<=4&&(
@@ -930,8 +969,8 @@ function ItemSelect({label, value, onChange, allItems, exclude=[]}) {
 // ════════════════════════════════════════════════════════════════
 function DCAPanel({ item, allItems }) {
   const [itemId,    setItemId]    = useState(item.id);
-  const [amountM,   setAmountM]   = useState(1);      // triệu VND
-  const [initCapM,  setInitCapM]  = useState(0);      // vốn đầu tiên, triệu VND
+  const [amountM,   setAmountM]   = useState(1);
+  const [initCapM,  setInitCapM]  = useState(0);
   const [freq,      setFreq]      = useState("monthly");
   const [preset,    setPreset]    = useState({l:"5Y",y:5});
   const [customFrom,setCustomFrom]=useState(()=>{const t=new Date();t.setFullYear(t.getFullYear()-5);return fmtD(t);});
@@ -939,9 +978,13 @@ function DCAPanel({ item, allItems }) {
   const [cmpId,     setCmpId]     = useState(null);
   const [dcaTab,    setDcaTab]    = useState(0);
   const [holdM,     setHoldM]     = useState(36);
+  const [portMode,  setPortMode]  = useState(false);
+  const [portAllocs,setPortAllocs]= useState([{id:item.id,w:100}]);
 
   const amount  = amountM  * 1_000_000;
   const initCap = initCapM * 1_000_000;
+  const totalPortW = portAllocs.reduce((s,a)=>s+a.w,0);
+  const portValid  = Math.abs(totalPortW-100)<1;
 
   // Sync itemId nếu sidebar đổi
   useEffect(()=>setItemId(item.id),[item.id]);
@@ -996,9 +1039,15 @@ function DCAPanel({ item, allItems }) {
 
   return (
     <div>
+      {/* Mode toggle */}
+      <div style={{display:"flex",gap:6,marginBottom:8}}>
+        <button className={`btn ${!portMode?"on":""}`} onClick={()=>setPortMode(false)} style={{fontSize:10}}>📈 Single</button>
+        <button className={`btn ${portMode?"on":""}`}  onClick={()=>setPortMode(true)}  style={{fontSize:10}}>🏗️ Danh mục</button>
+      </div>
+
       {/* Controls */}
       <div className="card" style={{padding:"12px 14px",marginBottom:10,display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
-        <ItemSelect label="Quỹ / ETF / CP" value={itemId} onChange={v=>{if(v)setItemId(v);}} allItems={allItems}/>
+        {!portMode&&<ItemSelect label="Quỹ / ETF / CP" value={itemId} onChange={v=>{if(v)setItemId(v);}} allItems={allItems}/>}
         <div>
           <div style={{fontSize:9,color:"var(--muted)",marginBottom:5,textTransform:"uppercase",letterSpacing:".1em",fontFamily:"JetBrains Mono"}}>Vốn đầu tiên (triệu ₫)</div>
           <input type="number" value={initCapM} onChange={e=>setInitCapM(Math.max(0,Number(e.target.value)))} step={1} min={0} style={{width:90}}/>
@@ -1011,21 +1060,55 @@ function DCAPanel({ item, allItems }) {
           <div style={{fontSize:9,color:"var(--muted)",marginBottom:5,textTransform:"uppercase",letterSpacing:".1em",fontFamily:"JetBrains Mono"}}>Tần suất</div>
           <div style={{display:"flex",gap:3}}>{[["daily","Ngày"],["biweekly","2T"],["weekly","Tuần"],["monthly","Tháng"]].map(([v,l])=><button key={v} className={`btn ${freq===v?"on":""}`} style={{fontSize:10,padding:"3px 7px"}} onClick={()=>setFreq(v)}>{l}</button>)}</div>
         </div>
-        <ItemSelect label="So sánh" value={cmpId} onChange={setCmpId} allItems={allItems} exclude={[itemId]}/>
       </div>
+
+      {/* Portfolio builder in portMode */}
+      {portMode&&portValid&&(
+        <div className="card" style={{padding:"12px 14px",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:600,marginBottom:8,color:"var(--accent)"}}>🏗️ Tỷ trọng danh mục</div>
+          {portAllocs.map((a,i)=>(
+            <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+              <select value={a.id} onChange={e=>setPortAllocs(p=>p.map((x,j)=>j===i?{...x,id:e.target.value}:x))}
+                style={{flex:1,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--txt)",borderRadius:6,padding:"5px 8px",fontSize:11,outline:"none"}}>
+                {Object.values(allItems).map(f=><option key={f.id} value={f.id}>{f.symbol} — {f.name?.slice(0,28)}</option>)}
+              </select>
+              <input type="number" min={0} max={100} value={a.w}
+                onChange={e=>{
+                  const nw=Math.min(100,Math.max(0,Number(e.target.value)));
+                  setPortAllocs(prev=>{
+                    const others=prev.filter((_,j)=>j!==i);
+                    const sumO=others.reduce((s,x)=>s+x.w,0);
+                    const rem=100-nw;
+                    let adj;
+                    if(sumO===0){const each=others.length>0?Math.floor(rem/others.length):0;const lo=rem-each*others.length;adj=others.map((x,oi)=>({...x,w:each+(oi===0?lo:0)}));}
+                    else{adj=others.map(x=>({...x,w:Math.round(x.w/sumO*rem)}));if(adj.length>0){const s=adj.reduce((a,b)=>a+b.w,0);adj[0]={...adj[0],w:adj[0].w+(rem-s)};}}
+                    return prev.map((x,j)=>j===i?{...x,w:nw}:adj[j>i?j-1:j]);
+                  });
+                }}
+                style={{width:58,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--txt)",borderRadius:6,padding:"5px 8px",fontFamily:"JetBrains Mono",fontSize:12,textAlign:"right",outline:"none",fontWeight:700}}/>
+              <span style={{color:"var(--muted)",fontSize:11}}>%</span>
+              {portAllocs.length>1&&<button className="btn" style={{color:"#fb7185",borderColor:"#fb7185"}} onClick={()=>setPortAllocs(p=>p.filter((_,j)=>j!==i))}>✕</button>}
+            </div>
+          ))}
+          <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4}}>
+            <button className="btn" onClick={()=>{const used=portAllocs.map(a=>a.id);const next=Object.keys(allItems).find(id=>!used.includes(id));if(next)setPortAllocs(p=>[...p,{id:next,w:0}]);}}>+ Thêm</button>
+            <span style={{fontSize:12,color:portValid?"#22d3ee":"#fb7185",fontFamily:"JetBrains Mono",fontWeight:600}}>Tổng: {totalPortW}% {portValid?"✓":"(cần 100%)"}</span>
+          </div>
+        </div>
+      )}
+
       <div className="card" style={{padding:"10px 14px",marginBottom:10}}>
         <PeriodBar preset={preset} setPreset={setPreset} customFrom={customFrom} setCustomFrom={setCustomFrom} customTo={customTo} setCustomTo={setCustomTo}/>
         <div style={{fontSize:10,color:"var(--muted)",fontFamily:"JetBrains Mono"}}>
           {toVN(ef)} → {toVN(toD)}
-          {cmpId&&(overlapFrom>fromD)&&<span style={{color:"#f59e0b",marginLeft:10}}>⚠️ Overlap từ {toVN(overlapFrom)} ({cmpItem?.symbol} bắt đầu muộn hơn)</span>}
-          {itemFirst>rawFrom&&!cmpId&&<span style={{color:"#f59e0b",marginLeft:10}}>⚠️ {selItem.symbol} chỉ có data từ {toVN(itemFirst)}</span>}
+          {itemFirst>rawFrom&&<span style={{color:"#f59e0b",marginLeft:10}}>⚠️ {selItem.symbol} chỉ có data từ {toVN(itemFirst)}</span>}
         </div>
       </div>
 
       {/* Sub-tabs */}
       <div style={{borderBottom:"1px solid var(--border)",marginBottom:10,display:"flex"}}>
         {["📊 Simulator","⚖️ vs Lump Sum","🎲 Rolling DCA","📋 Nhật ký"].map((t,i)=>(
-          <button key={i} className="tab-btn" style={{fontSize:11,...(dcaTab===i?{borderBottomColor:"var(--accent)",color:"var(--txt)"}:{})}} onClick={()=>setDcaTab(i)}>{t}</button>
+          <button key={i} className="tab-btn" style={{fontSize:"clamp(9px,1.8vw,12px)",padding:"8px clamp(6px,1.5vw,12px)"}} style={{fontSize:11,...(dcaTab===i?{borderBottomColor:"var(--accent)",color:"var(--txt)"}:{})}} onClick={()=>setDcaTab(i)}>{t}</button>
         ))}
       </div>
 
